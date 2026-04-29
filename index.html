@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -8,14 +9,23 @@
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
+    rel="stylesheet">
   <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
 
     :root {
       --bg-primary: #0f0f1a;
-      --bg-card: rgba(255, 255, 255, 0.05);
-      --bg-card-hover: rgba(255, 255, 255, 0.08);
+      --bg-card: rgba(255, 255, 255, 0.1);
+      --search-card: rgba(0, 0, 0, 0.85);
+      --bg-card-hover: rgba(255, 255, 255, 0.15);
+      --bg-card-solid: #1a1a2e;
       --text-primary: #ffffff;
       --text-secondary: rgba(255, 255, 255, 0.6);
       --text-muted: rgba(255, 255, 255, 0.35);
@@ -35,8 +45,10 @@
 
     [data-theme="light"] {
       --bg-primary: #f0f4f8;
-      --bg-card: rgba(255, 255, 255, 0.75);
-      --bg-card-hover: rgba(255, 255, 255, 0.95);
+      --bg-card: rgba(255, 255, 255, 0.9);
+      --bg-card-hover: rgba(255, 255, 255, 0.98);
+      --search-card: rgba(255, 255, 255, 0.9);
+      --bg-card-solid: #ffffff;
       --text-primary: #1a1a2e;
       --text-secondary: rgba(0, 0, 0, 0.55);
       --text-muted: rgba(0, 0, 0, 0.35);
@@ -66,11 +78,20 @@
     }
 
     @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(10px); }
-      to { opacity: 1; transform: translateY(0); }
+      from {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
     }
 
-    .fade-in { animation: fadeIn 0.5s ease forwards; }
+    .fade-in {
+      animation: fadeIn 0.5s ease forwards;
+    }
 
     .skeleton {
       background: linear-gradient(90deg, var(--bg-card) 25%, var(--bg-card-hover) 50%, var(--bg-card) 75%);
@@ -80,15 +101,44 @@
     }
 
     @keyframes shimmer {
-      0% { background-position: 200% 0; }
-      100% { background-position: -200% 0; }
+      0% {
+        background-position: 200% 0;
+      }
+
+      100% {
+        background-position: -200% 0;
+      }
     }
 
-    .skeleton-hero { height: 280px; border-radius: 24px; margin-bottom: 24px; }
-    .skeleton-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 16px; margin-bottom: 24px; }
-    .skeleton-card { height: 110px; border-radius: 24px; }
-    .skeleton-hourly { height: 120px; min-width: 90px; border-radius: 24px; }
-    .skeleton-daily { height: 48px; border-radius: 12px; margin-bottom: 8px; }
+    .skeleton-hero {
+      height: 280px;
+      border-radius: 24px;
+      margin-bottom: 24px;
+    }
+
+    .skeleton-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .skeleton-card {
+      height: 110px;
+      border-radius: 24px;
+    }
+
+    .skeleton-hourly {
+      height: 120px;
+      min-width: 90px;
+      border-radius: 24px;
+    }
+
+    .skeleton-daily {
+      height: 48px;
+      border-radius: 12px;
+      margin-bottom: 8px;
+    }
 
     .alert-banner {
       padding: 16px 20px;
@@ -102,10 +152,23 @@
       font-weight: 500;
     }
 
-    .alert-icon { font-size: 1.5rem; }
-    .alert-text { flex: 1; }
-    .alert-title { font-weight: 600; margin-bottom: 2px; }
-    .alert-desc { font-size: 0.85rem; opacity: 0.8; }
+    .alert-icon {
+      font-size: 1.5rem;
+    }
+
+    .alert-text {
+      flex: 1;
+    }
+
+    .alert-title {
+      font-weight: 600;
+      margin-bottom: 2px;
+    }
+
+    .alert-desc {
+      font-size: 0.85rem;
+      opacity: 0.8;
+    }
 
     .share-btn {
       position: fixed;
@@ -127,8 +190,14 @@
       z-index: 50;
     }
 
-    .share-btn:hover { transform: scale(1.1); background: var(--accent-hover); }
-    .share-btn:active { transform: scale(0.95); }
+    .share-btn:hover {
+      transform: scale(1.1);
+      background: var(--accent-hover);
+    }
+
+    .share-btn:active {
+      transform: scale(0.95);
+    }
 
     .share-toast {
       position: fixed;
@@ -158,6 +227,12 @@
       border-radius: 24px;
       box-shadow: var(--shadow);
       transition: all 0.3s ease;
+    }
+
+    @supports not (backdrop-filter: blur(20px)) {
+      .glass-card {
+        background: var(--bg-card-solid, #1a1a2e);
+      }
     }
 
     .glass-card:hover {
@@ -213,6 +288,8 @@
 
     .search-input {
       background: var(--bg-card);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
       border: 1px solid var(--border);
       border-radius: 14px;
       padding: 12px 16px 12px 44px;
@@ -229,7 +306,9 @@
       box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
     }
 
-    .search-input::placeholder { color: var(--text-muted); }
+    .search-input::placeholder {
+      color: var(--text-muted);
+    }
 
     .search-icon {
       position: absolute;
@@ -245,13 +324,22 @@
       top: calc(100% + 8px);
       left: 0;
       right: 0;
-      background: var(--bg-card);
+      background: var(--search-card);
       backdrop-filter: blur(20px);
       border: 1px solid var(--border);
       border-radius: 16px;
       overflow: hidden;
-      z-index: 100;
+      z-index: 1000;
       box-shadow: var(--shadow);
+    }
+
+    .recent-search {
+      padding: 8px 16px;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      font-weight: 500;
     }
 
     .search-result-item {
@@ -261,11 +349,24 @@
       border-bottom: 1px solid var(--border);
     }
 
-    .search-result-item:last-child { border-bottom: none; }
-    .search-result-item:hover { background: var(--bg-card-hover); }
+    .search-result-item:last-child {
+      border-bottom: none;
+    }
 
-    .search-result-name { font-weight: 500; font-size: 0.9rem; }
-    .search-result-country { font-size: 0.75rem; color: var(--text-secondary); margin-top: 2px; }
+    .search-result-item:hover {
+      background: var(--bg-card-hover);
+    }
+
+    .search-result-name {
+      font-weight: 500;
+      font-size: 0.9rem;
+    }
+
+    .search-result-country {
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+      margin-top: 2px;
+    }
 
     .btn {
       display: inline-flex;
@@ -285,11 +386,28 @@
       white-space: nowrap;
     }
 
-    .btn:hover { background: var(--bg-card-hover); transform: translateY(-1px); }
-    .btn:active { transform: translateY(0); }
-    .btn-accent { background: var(--accent); border-color: var(--accent); color: white; }
-    .btn-accent:hover { background: var(--accent-hover); }
-    .btn-icon { padding: 12px; }
+    .btn:hover {
+      background: var(--bg-card-hover);
+      transform: translateY(-1px);
+    }
+
+    .btn:active {
+      transform: translateY(0);
+    }
+
+    .btn-accent {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: white;
+    }
+
+    .btn-accent:hover {
+      background: var(--accent-hover);
+    }
+
+    .btn-icon {
+      padding: 12px;
+    }
 
     .unit-toggle {
       display: flex;
@@ -310,7 +428,10 @@
       font-family: inherit;
     }
 
-    .unit-btn.active { background: var(--accent); color: white; }
+    .unit-btn.active {
+      background: var(--accent);
+      color: white;
+    }
 
     .current-weather {
       padding: 40px;
@@ -331,21 +452,77 @@
       z-index: 0;
     }
 
-    .current-weather.weather-clear::before { background: var(--gradient-sunny); }
-    .current-weather.weather-cloudy::before { background: var(--gradient-cloudy); }
-    .current-weather.weather-rainy::before { background: var(--gradient-rainy); }
-    .current-weather.weather-snowy::before { background: var(--gradient-snowy); }
-    .current-weather.weather-stormy::before { background: var(--gradient-stormy); }
-    .current-weather.weather-foggy::before { background: var(--gradient-foggy); }
+    .current-weather.weather-clear::before {
+      background: var(--gradient-sunny);
+    }
 
-    .current-content { position: relative; z-index: 1; width: 100%; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 24px; }
+    .current-weather.weather-cloudy::before {
+      background: var(--gradient-cloudy);
+    }
 
-    .current-left { display: flex; flex-direction: column; gap: 8px; }
-    .current-city { font-size: 1.25rem; font-weight: 600; color: var(--text-secondary); }
-    .current-temp { font-size: 5rem; font-weight: 800; letter-spacing: -3px; line-height: 1; }
-    .current-condition { font-size: 1.1rem; font-weight: 500; color: var(--text-secondary); }
-    .current-date { font-size: 0.9rem; color: var(--text-muted); margin-top: 4px; }
-    .current-high-low { font-size: 0.95rem; color: var(--text-secondary); margin-top: 4px; }
+    .current-weather.weather-rainy::before {
+      background: var(--gradient-rainy);
+    }
+
+    .current-weather.weather-snowy::before {
+      background: var(--gradient-snowy);
+    }
+
+    .current-weather.weather-stormy::before {
+      background: var(--gradient-stormy);
+    }
+
+    .current-weather.weather-foggy::before {
+      background: var(--gradient-foggy);
+    }
+
+    .current-content {
+      position: relative;
+      z-index: 1;
+      width: 100%;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 24px;
+    }
+
+    .current-left {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .current-city {
+      font-size: 1.25rem;
+      font-weight: 600;
+      color: var(--text-secondary);
+    }
+
+    .current-temp {
+      font-size: 5rem;
+      font-weight: 800;
+      letter-spacing: -3px;
+      line-height: 1;
+    }
+
+    .current-condition {
+      font-size: 1.1rem;
+      font-weight: 500;
+      color: var(--text-secondary);
+    }
+
+    .current-date {
+      font-size: 0.9rem;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
+    .current-high-low {
+      font-size: 0.95rem;
+      color: var(--text-secondary);
+      margin-top: 4px;
+    }
 
     .current-right {
       display: flex;
@@ -373,8 +550,13 @@
     }
 
     @keyframes spin {
-      from { transform: translate(-50%, -50%) rotate(0deg); }
-      to { transform: translate(-50%, -50%) rotate(360deg); }
+      from {
+        transform: translate(-50%, -50%) rotate(0deg);
+      }
+
+      to {
+        transform: translate(-50%, -50%) rotate(360deg);
+      }
     }
 
     .sun-rays {
@@ -410,8 +592,15 @@
     }
 
     @keyframes float {
-      0%, 100% { transform: translate(-50%, -50%) translateX(0); }
-      50% { transform: translate(-50%, -50%) translateX(8px); }
+
+      0%,
+      100% {
+        transform: translate(-50%, -50%) translateX(0);
+      }
+
+      50% {
+        transform: translate(-50%, -50%) translateX(8px);
+      }
     }
 
     .weather-icon-cloud::before {
@@ -436,7 +625,9 @@
       left: 45px;
     }
 
-    .cloud-container { animation: float 4s ease-in-out infinite; }
+    .cloud-container {
+      animation: float 4s ease-in-out infinite;
+    }
 
     .weather-icon-rain {
       width: 100px;
@@ -472,11 +663,26 @@
     }
 
     @keyframes rain {
-      0% { transform: translateY(0); opacity: 1; }
-      100% { transform: translateY(30px); opacity: 0; }
+      0% {
+        transform: translateY(0);
+        opacity: 1;
+      }
+
+      100% {
+        transform: translateY(30px);
+        opacity: 0;
+      }
     }
 
-    .raindrops { position: absolute; top: 60%; left: 50%; transform: translateX(-50%); display: flex; gap: 8px; }
+    .raindrops {
+      position: absolute;
+      top: 60%;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 8px;
+    }
+
     .raindrop {
       width: 2px;
       height: 12px;
@@ -519,11 +725,26 @@
     }
 
     @keyframes snowfall {
-      0% { transform: translateY(0) rotate(0deg); opacity: 1; }
-      100% { transform: translateY(30px) rotate(180deg); opacity: 0.3; }
+      0% {
+        transform: translateY(0) rotate(0deg);
+        opacity: 1;
+      }
+
+      100% {
+        transform: translateY(30px) rotate(180deg);
+        opacity: 0.3;
+      }
     }
 
-    .snowflakes { position: absolute; top: 60%; left: 50%; transform: translateX(-50%); display: flex; gap: 10px; }
+    .snowflakes {
+      position: absolute;
+      top: 60%;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 10px;
+    }
+
     .snowflake {
       width: 6px;
       height: 6px;
@@ -533,8 +754,15 @@
     }
 
     @keyframes flash {
-      0%, 100% { opacity: 0; }
-      50% { opacity: 1; }
+
+      0%,
+      100% {
+        opacity: 0;
+      }
+
+      50% {
+        opacity: 1;
+      }
     }
 
     .lightning {
@@ -566,9 +794,20 @@
       border-radius: 3px;
     }
 
-    .fog-line:nth-child(2) { width: 100px; margin-left: 10px; }
-    .fog-line:nth-child(3) { width: 60px; margin-left: -10px; }
-    .fog-line:nth-child(4) { width: 90px; margin-left: 5px; }
+    .fog-line:nth-child(2) {
+      width: 100px;
+      margin-left: 10px;
+    }
+
+    .fog-line:nth-child(3) {
+      width: 60px;
+      margin-left: -10px;
+    }
+
+    .fog-line:nth-child(4) {
+      width: 90px;
+      margin-left: 5px;
+    }
 
     .details-grid {
       display: grid;
@@ -582,10 +821,29 @@
       text-align: center;
     }
 
-    .detail-icon { font-size: 1.5rem; margin-bottom: 8px; }
-    .detail-label { font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
-    .detail-value { font-size: 1.4rem; font-weight: 700; }
-    .detail-unit { font-size: 0.8rem; color: var(--text-secondary); margin-left: 2px; }
+    .detail-icon {
+      font-size: 1.5rem;
+      margin-bottom: 8px;
+    }
+
+    .detail-label {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 6px;
+    }
+
+    .detail-value {
+      font-size: 1.4rem;
+      font-weight: 700;
+    }
+
+    .detail-unit {
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+      margin-left: 2px;
+    }
 
     .section-title {
       font-size: 1.1rem;
@@ -596,11 +854,31 @@
       gap: 8px;
     }
 
-    .hourly-section { margin-bottom: 24px; overflow: hidden; }
-    .hourly-scroll { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 8px; scroll-snap-type: x mandatory; }
-    .hourly-scroll::-webkit-scrollbar { height: 6px; }
-    .hourly-scroll::-webkit-scrollbar-track { background: transparent; }
-    .hourly-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    .hourly-section {
+      margin-bottom: 24px;
+      overflow: hidden;
+    }
+
+    .hourly-scroll {
+      display: flex;
+      gap: 12px;
+      overflow-x: auto;
+      padding-bottom: 8px;
+      scroll-snap-type: x mandatory;
+    }
+
+    .hourly-scroll::-webkit-scrollbar {
+      height: 6px;
+    }
+
+    .hourly-scroll::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    .hourly-scroll::-webkit-scrollbar-thumb {
+      background: var(--border);
+      border-radius: 3px;
+    }
 
     .hourly-card {
       min-width: 90px;
@@ -610,13 +888,37 @@
       flex-shrink: 0;
     }
 
-    .hourly-time { font-size: 0.8rem; color: var(--text-muted); margin-bottom: 8px; font-weight: 500; }
-    .hourly-icon { font-size: 1.5rem; margin-bottom: 8px; }
-    .hourly-temp { font-size: 1rem; font-weight: 600; }
+    .hourly-time {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+      font-weight: 500;
+    }
 
-    .daily-section { margin-bottom: 24px; }
-    .daily-card { padding: 16px 20px; }
-    .daily-list { display: flex; flex-direction: column; gap: 8px; }
+    .hourly-icon {
+      font-size: 1.5rem;
+      margin-bottom: 8px;
+    }
+
+    .hourly-temp {
+      font-size: 1rem;
+      font-weight: 600;
+    }
+
+    .daily-section {
+      margin-bottom: 24px;
+    }
+
+    .daily-card {
+      padding: 16px 20px;
+    }
+
+    .daily-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
     .daily-item {
       display: grid;
       grid-template-columns: 100px 40px 1fr 80px;
@@ -625,17 +927,36 @@
       padding: 8px 0;
       border-bottom: 1px solid var(--border);
     }
-    .daily-item:last-child { border-bottom: none; }
-    .daily-day { font-weight: 500; }
-    .daily-icon { font-size: 1.25rem; text-align: center; }
+
+    .daily-item:last-child {
+      border-bottom: none;
+    }
+
+    .daily-day {
+      font-weight: 500;
+    }
+
+    .daily-icon {
+      font-size: 1.25rem;
+      text-align: center;
+    }
+
     .daily-temp-bar {
       display: flex;
       align-items: center;
       gap: 8px;
       font-size: 0.85rem;
     }
-    .daily-temp-low { color: var(--text-muted); min-width: 32px; text-align: right; }
-    .daily-temp-high { min-width: 32px; }
+
+    .daily-temp-low {
+      color: var(--text-muted);
+      min-width: 32px;
+      text-align: right;
+    }
+
+    .daily-temp-high {
+      min-width: 32px;
+    }
 
     .temp-bar-track {
       flex: 1;
@@ -653,7 +974,11 @@
       background: var(--gradient-sunny);
     }
 
-    .daily-precip { font-size: 0.8rem; color: var(--text-muted); text-align: right; }
+    .daily-precip {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      text-align: right;
+    }
 
     .fallback-container {
       display: flex;
@@ -664,8 +989,18 @@
       gap: 24px;
     }
 
-    .fallback-title { font-size: 1.25rem; font-weight: 600; text-align: center; }
-    .fallback-subtitle { color: var(--text-secondary); text-align: center; max-width: 400px; font-size: 0.9rem; }
+    .fallback-title {
+      font-size: 1.25rem;
+      font-weight: 600;
+      text-align: center;
+    }
+
+    .fallback-subtitle {
+      color: var(--text-secondary);
+      text-align: center;
+      max-width: 400px;
+      font-size: 0.9rem;
+    }
 
     .city-dropdown {
       display: grid;
@@ -680,11 +1015,26 @@
       text-align: center;
       cursor: pointer;
       font-weight: 500;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      transition: all 0.2s ease;
     }
 
-    .city-btn:hover { background: var(--bg-card-hover); }
-    .city-name { font-size: 0.95rem; }
-    .city-country { font-size: 0.8rem; color: var(--text-muted); margin-top: 2px; }
+    .city-btn:hover {
+      background: rgba(255, 255, 255, 0.15);
+      transform: translateY(-2px);
+    }
+
+    .city-name {
+      font-size: 0.95rem;
+    }
+
+    .city-country {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
 
     .loading-container {
       display: flex;
@@ -696,15 +1046,42 @@
     }
 
     @keyframes pulse {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.4; }
+
+      0%,
+      100% {
+        opacity: 1;
+      }
+
+      50% {
+        opacity: 0.4;
+      }
     }
 
-    .loading-dots { display: flex; gap: 8px; }
-    .loading-dot { width: 12px; height: 12px; background: var(--accent); border-radius: 50%; animation: pulse 1.4s ease-in-out infinite; }
-    .loading-dot:nth-child(2) { animation-delay: 0.2s; }
-    .loading-dot:nth-child(3) { animation-delay: 0.4s; }
-    .loading-text { color: var(--text-secondary); font-size: 0.9rem; }
+    .loading-dots {
+      display: flex;
+      gap: 8px;
+    }
+
+    .loading-dot {
+      width: 12px;
+      height: 12px;
+      background: var(--accent);
+      border-radius: 50%;
+      animation: pulse 1.4s ease-in-out infinite;
+    }
+
+    .loading-dot:nth-child(2) {
+      animation-delay: 0.2s;
+    }
+
+    .loading-dot:nth-child(3) {
+      animation-delay: 0.4s;
+    }
+
+    .loading-text {
+      color: var(--text-secondary);
+      font-size: 0.9rem;
+    }
 
     .error-container {
       display: flex;
@@ -716,29 +1093,74 @@
       text-align: center;
     }
 
-    .error-icon { font-size: 3rem; }
-    .error-message { color: var(--danger); font-size: 0.95rem; }
+    .error-icon {
+      font-size: 3rem;
+    }
 
-    .weather-emoji { font-size: 2rem; }
+    .error-message {
+      color: var(--danger);
+      font-size: 0.95rem;
+    }
+
+    .weather-emoji {
+      font-size: 2rem;
+    }
 
     @media (max-width: 768px) {
-      .app-container { padding: 16px 12px 40px; }
-      .header { padding: 16px; flex-direction: column; align-items: stretch; }
-      .header-actions { justify-content: center; }
-      .search-input { width: 100%; }
-      .current-weather { padding: 24px; }
-      .current-content { flex-direction: column; text-align: center; }
-      .current-temp { font-size: 4rem; }
-      .details-grid { grid-template-columns: repeat(2, 1fr); }
-      .daily-item { grid-template-columns: 80px 32px 1fr 60px; gap: 8px; }
+      .app-container {
+        padding: 16px 12px 40px;
+      }
+
+      .header {
+        padding: 16px;
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      .header-actions {
+        justify-content: center;
+      }
+
+      .search-input {
+        width: 100%;
+      }
+
+      .current-weather {
+        padding: 24px;
+      }
+
+      .current-content {
+        flex-direction: column;
+        text-align: center;
+      }
+
+      .current-temp {
+        font-size: 4rem;
+      }
+
+      .details-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+
+      .daily-item {
+        grid-template-columns: 80px 32px 1fr 60px;
+        gap: 8px;
+      }
     }
 
     @media (max-width: 480px) {
-      .details-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
-      .city-dropdown { grid-template-columns: repeat(2, 1fr); }
+      .details-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 10px;
+      }
+
+      .city-dropdown {
+        grid-template-columns: repeat(2, 1fr);
+      }
     }
   </style>
 </head>
+
 <body>
   <div id="root"></div>
 
@@ -790,7 +1212,7 @@
     }
 
     function convertTemp(c, unit) {
-      if (unit === "F") return Math.round(c * 9/5 + 32);
+      if (unit === "F") return Math.round(c * 9 / 5 + 32);
       return Math.round(c);
     }
 
@@ -1068,6 +1490,7 @@
       });
       const [contentVisible, setContentVisible] = useState(false);
       const [showShareToast, setShowShareToast] = useState(false);
+      const [searchFocused, setSearchFocused] = useState(false);
       const searchRef = useRef(null);
       const debounceRef = useRef(null);
       const refreshTimerRef = useRef(null);
@@ -1237,6 +1660,8 @@
                   placeholder="Search city..."
                   value={searchQuery}
                   onChange={e => searchCities(e.target.value)}
+                  onFocus={() => setSearchFocused(true)}
+                  onBlur={() => setTimeout(() => setSearchFocused(false), 150)}
                   aria-label="Search for a city"
                   role="combobox"
                   aria-expanded={searchResults.length > 0}
@@ -1255,9 +1680,9 @@
                     ))}
                   </div>
                 )}
-                {searchResults.length === 0 && searchQuery.length === 0 && recentSearches.length > 0 && (
+                {searchResults.length === 0 && searchQuery.length === 0 && searchFocused && recentSearches.length > 0 && (
                   <div className="search-results">
-                    <div style={{ padding: "8px 16px", fontSize: "0.75rem", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.5px" }}>Recent</div>
+                    <div className="recent-search">Recent</div>
                     {recentSearches.map((r, i) => (
                       <div key={i} className="search-result-item" onClick={() => fetchWeather(r.latitude, r.longitude, r.name)}>
                         <div className="search-result-name">{r.name}</div>
@@ -1303,19 +1728,21 @@
           )}
           {fallbackMode && !isLoading && (
             <div className="fallback-container">
-              {locError && <div className="error-message" style={{ maxWidth: "400px", textAlign: "center" }}>{locError}</div>}
-              <div className="fallback-title">Select a City</div>
-              <div className="fallback-subtitle">Geolocation is unavailable. Pick a city to see its weather.</div>
-              <button className="btn btn-accent" onClick={handleLocationRequest}>
-                📍 Try My Location Again
-              </button>
-              <div className="city-dropdown">
-                {MAJOR_CITIES.map(city => (
-                  <div key={city.name} className="glass-card city-btn" onClick={() => fetchWeather(city.lat, city.lon, `${city.name}, ${city.country}`)}>
-                    <div className="city-name">{city.name}</div>
-                    <div className="city-country">{city.country}</div>
-                  </div>
-                ))}
+              <div className="glass-card" style={{ padding: "40px", display: "flex", flexDirection: "column", alignItems: "center", gap: "24px", maxWidth: "650px", width: "100%" }}>
+                {locError && <div className="error-message" style={{ maxWidth: "400px", textAlign: "center" }}>{locError}</div>}
+                <div className="fallback-title">Select a City</div>
+                <div className="fallback-subtitle">Geolocation is unavailable. Pick a city to see its weather.</div>
+                <button className="btn btn-accent" onClick={handleLocationRequest}>
+                  📍 Try My Location Again
+                </button>
+                <div className="city-dropdown">
+                  {MAJOR_CITIES.map(city => (
+                    <div key={city.name} className="city-btn" onClick={() => fetchWeather(city.lat, city.lon, `${city.name}, ${city.country}`)}>
+                      <div className="city-name">{city.name}</div>
+                      <div className="city-country">{city.country}</div>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           )}
@@ -1360,8 +1787,9 @@
       `;
       const blob = new Blob([swCode], { type: "application/javascript" });
       const swUrl = URL.createObjectURL(blob);
-      navigator.serviceWorker.register(swUrl).catch(() => {});
+      navigator.serviceWorker.register(swUrl).catch(() => { });
     }
   </script>
 </body>
+
 </html>
