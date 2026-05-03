@@ -1,4 +1,4 @@
-const CACHE = "weather-v2";
+const CACHE = "weather-v3";
 const STATIC = ["/", "/index.html", "/styles.css", "/app.js", "/manifest.json"];
 
 self.addEventListener("install", e => {

@@ -55,6 +55,17 @@ const GRADIENTS = {
   "foggy-night": "var(--gradient-night-foggy)",
 };
 
+const MOON_PHASES = {
+  0: { name: "New Moon", emoji: "🌑" },
+  1: { name: "Waxing Crescent", emoji: "🌒" },
+  2: { name: "First Quarter", emoji: "🌓" },
+  3: { name: "Waxing Gibbous", emoji: "🌔" },
+  4: { name: "Full Moon", emoji: "🌕" },
+  5: { name: "Waning Gibbous", emoji: "🌖" },
+  6: { name: "Last Quarter", emoji: "🌗" },
+  7: { name: "Waning Crescent", emoji: "🌘" },
+};
+
 function getBgGradient(code, daytime) {
   const info = getWeatherInfo(code);
   const key = `${info.type}-${daytime ? "day" : "night"}`;
@@ -108,17 +119,20 @@ function formatLocalDate(isoString, options) {
   return date.toLocaleDateString("en-US", options);
 }
 
-function getCurrentTimeInTimezone(timezone) {
+function getCurrentTimeInTimezone(timezone, useBrowserTz) {
   if (!timezone) return { dateStr: "", timeStr: "" };
   const now = new Date();
-  const fmt = new Intl.DateTimeFormat("en-US", { timeZone: timezone, hour: "numeric", minute: "2-digit", hour12: true });
-  const dateFmt = new Intl.DateTimeFormat("en-US", { timeZone: timezone, weekday: "long", month: "long", day: "numeric" });
+  const tz = useBrowserTz ? undefined : timezone;
+  const opts = tz ? { timeZone: tz } : {};
+  const fmt = new Intl.DateTimeFormat("en-US", { ...opts, hour: "numeric", minute: "2-digit", hour12: true });
+  const dateFmt = new Intl.DateTimeFormat("en-US", { ...opts, weekday: "long", month: "long", day: "numeric" });
   return { dateStr: dateFmt.format(now), timeStr: fmt.format(now) };
 }
 
-function getCurrentHourInTimezone(timezone) {
-  if (!timezone) return new Date().getHours();
+function getCurrentHourInTimezone(timezone, useBrowserTz) {
   const now = new Date();
+  if (useBrowserTz) return now.getHours();
+  if (!timezone) return now.getHours();
   const parts = new Intl.DateTimeFormat("en-US", { timeZone: timezone, hour: "numeric", hour12: false }).formatToParts(now);
   return parseInt(parts.find(p => p.type === "hour").value, 10);
 }
@@ -131,6 +145,15 @@ function isDaytime(data) {
   const sunriseTime = new Date(sunriseStr);
   const sunsetTime = new Date(sunsetStr);
   return now >= sunriseTime && now <= sunsetTime;
+}
+
+function trackFeature(name) {
+  try {
+    const data = JSON.parse(localStorage.getItem("weather-telemetry") || "{}");
+    data[name] = (data[name] || 0) + 1;
+    data._last = Date.now();
+    localStorage.setItem("weather-telemetry", JSON.stringify(data));
+  } catch {}
 }
 
 const WeatherIcon = React.memo(function WeatherIcon({ code, size = "medium" }) {
@@ -228,6 +251,35 @@ function LoadingState() {
   );
 }
 
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="error-boundary">
+          <div className="glass-card" style={{ padding: "40px", textAlign: "center", maxWidth: "500px", margin: "80px auto" }}>
+            <div style={{ fontSize: "3rem", marginBottom: "16px" }}>⚠️</div>
+            <h2 style={{ marginBottom: "8px" }}>Something went wrong</h2>
+            <p style={{ color: "var(--text-secondary)", marginBottom: "24px", fontSize: "0.9rem" }}>
+              {this.state.error?.message || "An unexpected error occurred"}
+            </p>
+            <button className="btn btn-accent" onClick={() => { this.setState({ hasError: false, error: null }); window.location.reload(); }}>
+              Reload App
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 const CurrentWeather = React.memo(function CurrentWeather({ data, cityName, units, fetchTime, tick, toggleFavorite, isFavorite }) {
   const info = getWeatherInfo(data.current.weather_code);
   const { dateStr, timeStr } = getCurrentTimeInTimezone(data.timezone);
@@ -264,7 +316,24 @@ const CurrentWeather = React.memo(function CurrentWeather({ data, cityName, unit
   );
 });
 
-const WeatherDetails = React.memo(function WeatherDetails({ data, units }) {
+const MoonPhaseCard = React.memo(function MoonPhaseCard({ moonData }) {
+  if (!moonData || moonData.moon_phase == null) return null;
+  const phase = MOON_PHASES[moonData.moon_phase] || { name: "Unknown", emoji: "🌑" };
+  const rise = moonData.moonrise ? formatLocalTime(moonData.moonrise) : "--";
+  const set = moonData.moonset ? formatLocalTime(moonData.moonset) : "--";
+  return (
+    <div className="glass-card detail-card detail-moon">
+      <div className="detail-icon">{phase.emoji}</div>
+      <div className="detail-label">Moon Phase</div>
+      <div className="detail-value" style={{ fontSize: "1rem" }}>{phase.name}</div>
+      <div style={{ fontSize: "0.7rem", color: "var(--text-muted)", marginTop: "6px" }}>
+        ↑ {rise} ↓ {set}
+      </div>
+    </div>
+  );
+});
+
+const WeatherDetails = React.memo(function WeatherDetails({ data, units, moonData }) {
   const sunrise = data.daily.sunrise[0] ? formatLocalTime(data.daily.sunrise[0]) : "--";
   const sunset = data.daily.sunset[0] ? formatLocalTime(data.daily.sunset[0]) : "--";
   const aqi = data.aqi;
@@ -291,6 +360,9 @@ const WeatherDetails = React.memo(function WeatherDetails({ data, units }) {
   const windSpeed = convertWind(data.current.wind_speed_10m, units.wind);
   const windUnit = units.wind === "mph" ? "mph" : "km/h";
 
+  const alerts = data.alerts;
+  const hasOfficialAlerts = alerts && alerts.length > 0;
+
   const details = [
     { icon: "💧", label: "Humidity", value: data.current.relative_humidity_2m, unit: "%", type: "plain" },
     { type: "wind", speed: windSpeed, unit: windUnit, direction: windDeg, gusts: convertWind(data.current.wind_gusts_10m, units.wind) },
@@ -306,6 +378,18 @@ const WeatherDetails = React.memo(function WeatherDetails({ data, units }) {
 
   return (
     <>
+      {hasOfficialAlerts && (
+        <div className="official-alerts fade-in">
+          {alerts.map((a, i) => (
+            <div key={i} className="official-alert glass-card">
+              <div className="official-alert-title">⚠️ {a.event || "Weather Alert"}</div>
+              <div className="official-alert-desc">{a.description || "Official weather advisory in effect."}</div>
+              {a.expires && <div className="official-alert-expires">Expires: {a.expires}</div>}
+              {a.sender && <div className="official-alert-sender">Source: {a.sender}</div>}
+            </div>
+          ))}
+        </div>
+      )}
       <div className="details-grid">
         {details.map((d, i) => {
         if (d.type === "wind") {
@@ -351,6 +435,7 @@ const WeatherDetails = React.memo(function WeatherDetails({ data, units }) {
           </div>
         );
       })}
+      <MoonPhaseCard moonData={moonData} />
       </div>
       <AQIDetails aqi={aqi} aqiDetails={data.aqiDetails} aqiLabel={aqiLabel} />
     </>
@@ -358,7 +443,8 @@ const WeatherDetails = React.memo(function WeatherDetails({ data, units }) {
 });
 
 const HourlyForecast = React.memo(function HourlyForecast({ data, units, scrollRef }) {
-  const currentHour = getCurrentHourInTimezone(data.timezone);
+  const [useBrowserTz, setUseBrowserTz] = useState(false);
+  const currentHour = getCurrentHourInTimezone(data.timezone, useBrowserTz);
   const today = data.daily.time[0];
 
   const hours = [];
@@ -375,18 +461,25 @@ const HourlyForecast = React.memo(function HourlyForecast({ data, units, scrollR
 
     const time = data.hourly.time[itemIdx];
     const hourStr = i === 0 ? "Now" : formatLocalTime(time);
+    const snowfall = data.hourly.snowfall && data.hourly.snowfall[itemIdx] != null ? data.hourly.snowfall[itemIdx] : null;
     hours.push({
       time: hourStr,
       temp: convertTemp(data.hourly.temperature_2m[itemIdx], units.temp),
       feelsLike: convertTemp(data.hourly.apparent_temperature[itemIdx], units.temp),
       code: data.hourly.weather_code[itemIdx],
       precip: data.hourly.precipitation_probability[itemIdx] != null ? data.hourly.precipitation_probability[itemIdx] : null,
+      snowfall,
     });
   }
 
   return (
     <div className="hourly-section">
-      <div className="section-title">🕐 24-Hour Forecast</div>
+      <div className="section-title">
+        🕐 24-Hour Forecast
+        <button className="tz-toggle-btn" onClick={() => setUseBrowserTz(b => !b)} title="Toggle timezone" aria-label={`Switch to ${useBrowserTz ? "local" : "browser"} timezone`}>
+          {useBrowserTz ? "🖥️ My Time" : "📍 Local"}
+        </button>
+      </div>
       <div className="hourly-scroll" ref={scrollRef}>
         {hours.map((h, i) => (
           <div key={i} className="glass-card hourly-card" style={{ "--i": i }}>
@@ -394,7 +487,10 @@ const HourlyForecast = React.memo(function HourlyForecast({ data, units, scrollR
             <div className="hourly-icon"><WeatherIcon code={h.code} /></div>
             <div className="hourly-temp">{h.temp}°</div>
             <div className="hourly-feels">Feels {h.feelsLike}°</div>
-            {h.precip !== null && <div style={{ fontSize: "0.7rem", color: "var(--text-muted)", marginTop: "2px" }}>{h.precip}%💧</div>}
+            <div className="hourly-precip">
+              {h.precip !== null && <span className="precip-rain">{h.precip}%💧</span>}
+              {h.snowfall !== null && h.snowfall > 0 && <span className="precip-snow">{h.snowfall.toFixed(1)}cm ❄️</span>}
+            </div>
           </div>
         ))}
       </div>
@@ -507,6 +603,7 @@ const TemperatureChart = React.memo(function TemperatureChart({ data, units }) {
   const today = data.daily.time[0];
 
   const hours = [];
+  const feelsLikeHours = [];
   const precips = [];
   const startIdx = data.hourly.time.findIndex(t => {
     const datePart = t.split("T")[0];
@@ -519,13 +616,15 @@ const TemperatureChart = React.memo(function TemperatureChart({ data, units }) {
     const itemIdx = (startIdx >= 0 ? startIdx : 0) + i;
     if (itemIdx >= data.hourly.time.length) break;
     hours.push(convertTemp(data.hourly.temperature_2m[itemIdx], units.temp));
+    feelsLikeHours.push(convertTemp(data.hourly.apparent_temperature[itemIdx], units.temp));
     precips.push(data.hourly.precipitation_probability[itemIdx] ?? 0);
   }
 
   if (hours.length < 2) return null;
 
-  const minT = Math.min(...hours);
-  const maxT = Math.max(...hours);
+  const allTemps = [...hours, ...feelsLikeHours];
+  const minT = Math.min(...allTemps);
+  const maxT = Math.max(...allTemps);
   const range = maxT - minT || 1;
   const padding = 20;
   const width = 500;
@@ -539,6 +638,12 @@ const TemperatureChart = React.memo(function TemperatureChart({ data, units }) {
     temp: t,
   }));
 
+  const feelsPoints = feelsLikeHours.map((t, i) => ({
+    x: (i / (feelsLikeHours.length - 1)) * chartW + 15,
+    y: padding + chartH - ((t - minT) / range) * chartH,
+    temp: t,
+  }));
+
   let pathD = `M ${points[0].x} ${points[0].y}`;
   for (let i = 1; i < points.length; i++) {
     const prev = points[i - 1];
@@ -546,6 +651,15 @@ const TemperatureChart = React.memo(function TemperatureChart({ data, units }) {
     const cpx1 = prev.x + (curr.x - prev.x) / 3;
     const cpx2 = curr.x - (curr.x - prev.x) / 3;
     pathD += ` C ${cpx1} ${prev.y}, ${cpx2} ${curr.y}, ${curr.x} ${curr.y}`;
+  }
+
+  let feelsPathD = `M ${feelsPoints[0].x} ${feelsPoints[0].y}`;
+  for (let i = 1; i < feelsPoints.length; i++) {
+    const prev = feelsPoints[i - 1];
+    const curr = feelsPoints[i];
+    const cpx1 = prev.x + (curr.x - prev.x) / 3;
+    const cpx2 = curr.x - (curr.x - prev.x) / 3;
+    feelsPathD += ` C ${cpx1} ${prev.y}, ${cpx2} ${curr.y}, ${curr.x} ${curr.y}`;
   }
 
   const areaD = pathD + ` L ${points[points.length - 1].x} ${height - padding} L ${points[0].x} ${height - padding} Z`;
@@ -561,6 +675,10 @@ const TemperatureChart = React.memo(function TemperatureChart({ data, units }) {
     <div className="chart-section">
       <div className="section-title">📈 Temperature & Precipitation</div>
       <div className="glass-card chart-card">
+        <div className="chart-legend">
+          <span className="legend-item"><span className="legend-dot solid" /> Actual</span>
+          <span className="legend-item"><span className="legend-dot dashed" /> Feels Like</span>
+        </div>
         <div className="chart-labels">
           <span>{minT}°</span>
           <span>{maxT}°</span>
@@ -577,6 +695,7 @@ const TemperatureChart = React.memo(function TemperatureChart({ data, units }) {
           ))}
           <path d={areaD} fill="url(#tempGrad)" />
           <path d={pathD} fill="none" stroke="var(--accent)" strokeWidth="2.5" strokeLinecap="round" />
+          <path d={feelsPathD} fill="none" stroke="var(--accent)" strokeWidth="1.5" strokeDasharray="6 4" strokeLinecap="round" opacity="0.6" />
           {points.map((p, i) => (
             <circle key={i} cx={p.x} cy={p.y} r={i === 0 ? 4 : 2.5} fill={i === 0 ? "var(--accent)" : "var(--text-muted)"} opacity={i === 0 ? 1 : 0.5} />
           ))}
@@ -644,6 +763,70 @@ const DailyForecast = React.memo(function DailyForecast({ data, units }) {
   );
 });
 
+const ComparisonModal = React.memo(function ComparisonModal({ cities, currentCity, units, onClose }) {
+  const [cityData, setCityData] = useState({});
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchAll = async () => {
+      const results = {};
+      await Promise.all(cities.map(async (city) => {
+        try {
+          const res = await fetch(
+            `https://api.open-meteo.com/v1/forecast?latitude=${city.latitude}&longitude=${city.longitude}&current=temperature_2m,weather_code,wind_speed_10m&daily=temperature_2m_max,temperature_2m_min,weather_code&timezone=auto&forecast_days=1`
+          );
+          const data = await res.json();
+          results[city.name] = data;
+        } catch {
+          results[city.name] = null;
+        }
+      }));
+      setCityData(results);
+      setLoading(false);
+    };
+    fetchAll();
+  }, [cities]);
+
+  const allCities = [currentCity, ...cities.filter(c => c.name !== currentCity?.name)].slice(0, 3);
+
+  return (
+    <div className="modal-overlay fade-in" onClick={onClose} role="dialog" aria-modal="true" aria-label="City comparison">
+      <div className="modal-content glass-card" onClick={e => e.stopPropagation()}>
+        <button className="modal-close" onClick={onClose} aria-label="Close comparison">✕</button>
+        <h2 className="modal-title">🔍 City Comparison</h2>
+        {loading ? (
+          <div className="modal-loading">Loading comparison...</div>
+        ) : (
+          <div className="comparison-grid">
+            {allCities.map((city, i) => {
+              const d = cityData[city.name];
+              const info = d ? getWeatherInfo(d.current.weather_code) : null;
+              return (
+                <div key={i} className="comparison-card">
+                  <div className="comparison-city">{city.name}</div>
+                  {d && info ? (
+                    <>
+                      <div className="comparison-emoji">{info.emoji}</div>
+                      <div className="comparison-temp">{convertTemp(d.current.temperature_2m, units.temp)}°{units.temp}</div>
+                      <div className="comparison-condition">{info.label}</div>
+                      <div className="comparison-high-low">
+                        H: {convertTemp(d.daily.temperature_2m_max[0], units.temp)}° / L: {convertTemp(d.daily.temperature_2m_min[0], units.temp)}°
+                      </div>
+                      <div className="comparison-wind">Wind: {convertWind(d.current.wind_speed_10m, units.wind)} {units.wind === "mph" ? "mph" : "km/h"}</div>
+                    </>
+                  ) : (
+                    <div className="comparison-error">Failed to load</div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+});
+
 const App = () => {
   const [weatherData, setWeatherData] = useState(null);
   const [cityName, setCityName] = useState("");
@@ -671,6 +854,11 @@ const App = () => {
   const [fetchTime, setFetchTime] = useState(Date.now());
   const [searchIdx, setSearchIdx] = useState(-1);
   const [tick, setTick] = useState(0);
+  const [moonData, setMoonData] = useState(null);
+  const [historicalData, setHistoricalData] = useState(null);
+  const [compareCities, setCompareCities] = useState(null);
+  const [showComparison, setShowComparison] = useState(false);
+  const [progressVisible, setProgressVisible] = useState(false);
   const searchRef = useRef(null);
   const hourlyScrollRef = useRef(null);
   const debounceRef = useRef(null);
@@ -685,6 +873,16 @@ const App = () => {
     localStorage.setItem("weather-units", JSON.stringify(units));
   }, [units]);
 
+  useEffect(() => {
+    if (weatherData) {
+      const info = getWeatherInfo(weatherData.current.weather_code);
+      const svg = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>${encodeURIComponent(info.emoji)}</text></svg>`;
+      const icon = document.querySelector("link[rel='icon']");
+      if (icon) icon.href = `data:image/svg+xml,${svg}`;
+      document.title = `${convertTemp(weatherData.current.temperature_2m, units.temp)}°${units.temp} ${info.label} — ${cityName || "Weather"}`;
+    }
+  }, [weatherData, units, cityName]);
+
   const fetchWeather = useCallback(async (lat, lon, name) => {
     if (lat == null || lon == null || isNaN(lat) || isNaN(lon)) {
       setError("Invalid coordinates provided");
@@ -695,12 +893,15 @@ const App = () => {
     lon = parseFloat(lon);
     setContentVisible(false);
     setIsLoading(true);
+    setProgressVisible(true);
     setError(null);
+    setMoonData(null);
+    setHistoricalData(null);
     if (debounceRef.current) clearTimeout(debounceRef.current);
     try {
       const [weatherRes, aqiRes] = await Promise.all([
         fetch(
-          `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,surface_pressure,dew_point_2m,visibility&hourly=temperature_2m,apparent_temperature,weather_code,wind_speed_10m,precipitation_probability&daily=weather_code,temperature_2m_max,temperature_2m_min,uv_index_max,sunrise,sunset,precipitation_probability_max&timezone=auto&forecast_days=7`
+          `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,surface_pressure,dew_point_2m,visibility&hourly=temperature_2m,apparent_temperature,weather_code,wind_speed_10m,precipitation_probability,snowfall&daily=weather_code,temperature_2m_max,temperature_2m_min,uv_index_max,sunrise,sunset,precipitation_probability_max&timezone=auto&forecast_days=7`
         ),
         fetch(
           `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lat}&longitude=${lon}&current=us_aqi,pm2_5,pm10,ozone,nitrogen_dioxide`
@@ -718,6 +919,41 @@ const App = () => {
           no2: aqiData.current?.nitrogen_dioxide ?? null,
         };
       }
+
+      const now = new Date();
+      const yearAgo = new Date(now);
+      yearAgo.setFullYear(yearAgo.getFullYear() - 1);
+      const yearAgoStr = yearAgo.toISOString().split("T")[0];
+      const [moonRes, histRes] = await Promise.allSettled([
+        fetch(
+          `https://api.open-meteo.com/v1/moon?latitude=${lat}&longitude=${lon}&daily=moonrise,moonset,moon_phase&timezone=auto&forecast_days=1`
+        ),
+        fetch(
+          `https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lon}&start_date=${yearAgoStr}&end_date=${yearAgoStr}&daily=temperature_2m_max,temperature_2m_min,weather_code&timezone=auto`
+        )
+      ]);
+      if (moonRes.status === "fulfilled" && moonRes.value.ok) {
+        const moonJson = await moonRes.value.json();
+        if (moonJson.daily?.moon_phase?.[0] != null) {
+          setMoonData({
+            moon_phase: moonJson.daily.moon_phase[0],
+            moonrise: moonJson.daily.moonrise?.[0] || null,
+            moonset: moonJson.daily.moonset?.[0] || null,
+          });
+        }
+      }
+      if (histRes.status === "fulfilled" && histRes.value.ok) {
+        const histJson = await histRes.value.json();
+        if (histJson.daily?.temperature_2m_max?.[0] != null) {
+          setHistoricalData({
+            max: histJson.daily.temperature_2m_max[0],
+            min: histJson.daily.temperature_2m_min[0],
+            code: histJson.daily.weather_code?.[0],
+            date: yearAgoStr,
+          });
+        }
+      }
+
       setWeatherData(weatherData);
       setCityName(name);
       setFetchTime(Date.now());
@@ -732,10 +968,11 @@ const App = () => {
           return updated;
         });
       }
-      setTimeout(() => { setIsLoading(false); setContentVisible(true); }, 300);
+      setTimeout(() => { setIsLoading(false); setContentVisible(true); setProgressVisible(false); }, 300);
       if (refreshTimerRef.current) clearInterval(refreshTimerRef.current);
       refreshTimerRef.current = setInterval(() => fetchWeather(lat, lon, name), 600000);
     } catch (e) {
+      setProgressVisible(false);
       const cached = localStorage.getItem("weather-cache");
       if (cached) {
         try {
@@ -811,7 +1048,12 @@ const App = () => {
           searchRef.current?.querySelector("input")?.focus();
         }
       }
-      if (e.key === "Escape") { setSearchResults([]); setSearchQuery(""); setSearchIdx(-1); }
+      if (e.key === "Escape") {
+        setSearchResults([]);
+        setSearchQuery("");
+        setSearchIdx(-1);
+        if (showComparison) { setShowComparison(false); setCompareCities(null); }
+      }
       if (e.key === "ArrowDown" && searchResults.length > 0 && document.activeElement.tagName === "INPUT") {
         e.preventDefault();
         setSearchIdx(i => Math.min(i + 1, searchResults.length - 1));
@@ -839,7 +1081,7 @@ const App = () => {
     };
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [handleLocationRequest, toggleTheme, fetchWeather, searchResults, searchIdx]);
+  }, [handleLocationRequest, toggleTheme, fetchWeather, searchResults, searchIdx, showComparison]);
 
   useEffect(() => {
     return () => { if (refreshTimerRef.current) clearInterval(refreshTimerRef.current); };
@@ -851,6 +1093,7 @@ const App = () => {
   }, []);
 
   const toggleTheme = () => {
+    trackFeature("theme_toggle");
     if (document.startViewTransition) {
       document.startViewTransition(() => {
         setTheme(t => t === "dark" ? "light" : "dark");
@@ -861,6 +1104,7 @@ const App = () => {
   };
 
   const toggleFavorite = useCallback(() => {
+    trackFeature("favorites");
     if (!cityName) return;
     setFavorites(prev => {
       const exists = prev.find(f => f.name === cityName);
@@ -881,14 +1125,58 @@ const App = () => {
   const isFavorite = favorites.some(f => f.name === cityName);
 
   const shareWeather = useCallback(() => {
+    trackFeature("share");
     if (!weatherData) return;
     const info = getWeatherInfo(weatherData.current.weather_code);
     const text = `Weather in ${cityName || "Your Location"}: ${convertTemp(weatherData.current.temperature_2m, units.temp)}°${units.temp}, ${info.label}. H:${convertTemp(weatherData.daily.temperature_2m_max[0], units.temp)}° L:${convertTemp(weatherData.daily.temperature_2m_min[0], units.temp)}°`;
-    navigator.clipboard.writeText(text).then(() => {
-      setShowShareToast(true);
-      setTimeout(() => setShowShareToast(false), 2000);
-    });
+    if (navigator.share) {
+      navigator.share({ title: "Weather", text }).catch(() => {});
+    } else {
+      navigator.clipboard.writeText(text).then(() => {
+        setShowShareToast(true);
+        setTimeout(() => setShowShareToast(false), 2000);
+      });
+    }
   }, [weatherData, cityName, units]);
+
+  const shareWeatherImage = useCallback(async () => {
+    trackFeature("share_image");
+    if (!weatherData) return;
+    const info = getWeatherInfo(weatherData.current.weather_code);
+    const canvas = document.createElement("canvas");
+    const w = 600;
+    const h = 300;
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    const isDark = theme === "dark";
+    ctx.fillStyle = isDark ? "#0f0f1a" : "#f0f4f8";
+    ctx.fillRect(0, 0, w, h);
+    ctx.fillStyle = isDark ? "#ffffff" : "#1a1a2e";
+    ctx.font = "bold 36px Inter, sans-serif";
+    ctx.fillText(cityName || "Your Location", 40, 60);
+    ctx.font = "bold 72px Inter, sans-serif";
+    ctx.fillText(`${convertTemp(weatherData.current.temperature_2m, units.temp)}°${units.temp}`, 40, 140);
+    ctx.font = "24px Inter, sans-serif";
+    ctx.fillStyle = isDark ? "rgba(255,255,255,0.6)" : "rgba(0,0,0,0.55)";
+    ctx.fillText(`${info.emoji} ${info.label}`, 40, 180);
+    ctx.fillText(`H:${convertTemp(weatherData.daily.temperature_2m_max[0], units.temp)}° L:${convertTemp(weatherData.daily.temperature_2m_min[0], units.temp)}°`, 40, 220);
+    ctx.font = "16px Inter, sans-serif";
+    ctx.fillStyle = isDark ? "rgba(255,255,255,0.35)" : "rgba(0,0,0,0.35)";
+    ctx.fillText("Weather Dashboard", 40, 270);
+    try {
+      canvas.toBlob(blob => {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "weather.png";
+        a.click();
+        URL.revokeObjectURL(url);
+        setShowShareToast(true);
+        setTimeout(() => setShowShareToast(false), 2000);
+      });
+    } catch {}
+  }, [weatherData, cityName, units, theme]);
 
   const weatherAlert = useMemo(() => {
     if (!weatherData) return null;
@@ -900,9 +1188,18 @@ const App = () => {
     return null;
   }, [weatherData]);
 
+  const startComparison = useCallback((clickedFav) => {
+    trackFeature("comparison");
+    const cities = [clickedFav, { name: cityName, latitude: weatherData?.latitude, longitude: weatherData?.longitude }].filter(c => c.name && c.latitude != null);
+    setCompareCities(cities);
+    setShowComparison(true);
+  }, [cityName, weatherData]);
+
   return (
     <div className="app-container">
+      {progressVisible && <div className="progress-bar" />}
       {weatherData && <div className="animated-bg" style={{ background: getBgGradient(weatherData.current.weather_code, isDaytime(weatherData)) }} />}
+      <a href="#main-content" className="skip-link">Skip to content</a>
       <div className="header glass-card">
         <div className="logo">
           <div className="logo-icon">⛅</div>
@@ -914,9 +1211,9 @@ const App = () => {
             <input
               className="search-input"
               type="text"
-              placeholder="Search city..."
+              placeholder="Search city... (/)"
               value={searchQuery}
-              onChange={e => searchCities(e.target.value)}
+              onChange={e => { searchCities(e.target.value); trackFeature("search"); }}
               onFocus={() => setSearchFocused(true)}
               onBlur={() => setTimeout(() => setSearchFocused(false), 150)}
               aria-label="Search for a city"
@@ -924,9 +1221,9 @@ const App = () => {
               aria-expanded={searchResults.length > 0}
             />
             {searchResults.length > 0 && (
-              <div className="search-results">
+              <div className="search-results" role="listbox">
                 {searchResults.map((r, idx) => (
-                  <div key={r.id} className={`search-result-item${idx === searchIdx ? " highlighted" : ""}`} onClick={() => {
+                  <div key={r.id} className={`search-result-item${idx === searchIdx ? " highlighted" : ""}`} role="option" onClick={() => {
                     fetchWeather(r.latitude, r.longitude, `${r.name}, ${r.country}`);
                     setSearchResults([]);
                     setSearchQuery("");
@@ -948,7 +1245,7 @@ const App = () => {
               </div>
             )}
           </div>
-          <button className="btn btn-icon" onClick={handleLocationRequest} title="Use my location" aria-label="Use my current location">
+          <button className="btn btn-icon" onClick={handleLocationRequest} title="Use my location (L)" aria-label="Use my current location">
             📍
           </button>
           <div className="unit-toggle">
@@ -959,7 +1256,10 @@ const App = () => {
             <button className={`unit-btn ${units.wind === "kmh" ? "active" : ""}`} onClick={() => setUnits(u => ({ ...u, wind: "kmh" }))}>km/h</button>
             <button className={`unit-btn ${units.wind === "mph" ? "active" : ""}`} onClick={() => setUnits(u => ({ ...u, wind: "mph" }))}>mph</button>
           </div>
-          <button className="btn btn-icon" onClick={toggleTheme} title="Toggle theme" aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} theme`}>
+          <button className="btn btn-icon" onClick={shareWeatherImage} title="Download weather card image" aria-label="Download weather card">
+            🖼️
+          </button>
+          <button className="btn btn-icon" onClick={toggleTheme} title="Toggle theme (T)" aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} theme`}>
             {theme === "dark" ? "☀️" : "🌙"}
           </button>
         </div>
@@ -970,16 +1270,21 @@ const App = () => {
           <div className="favorites-label">Favorites</div>
           <div className="favorites-scroll">
             {favorites.map((f, i) => (
-              <div key={i} className={`favorite-chip ${f.name === cityName ? "active" : ""}`} onClick={() => fetchWeather(f.latitude, f.longitude, f.name)}>
+              <div key={i} className={`favorite-chip ${f.name === cityName ? "active" : ""}`} onClick={() => fetchWeather(f.latitude, f.longitude, f.name)} onDoubleClick={(e) => { e.preventDefault(); startComparison(f); }}>
                 {f.name}
               </div>
             ))}
+            {favorites.length >= 2 && (
+              <div className="favorite-chip compare-chip" onClick={() => { setCompareCities(favorites.slice(0, 3)); setShowComparison(true); }}>
+                🔍 Compare
+              </div>
+            )}
           </div>
         </div>
       )}
 
       {weatherAlert && !isLoading && (
-        <div className="alert-banner fade-in" role="alert">
+        <div className="alert-banner fade-in" role="alert" aria-live="assertive">
           <span className="alert-icon">⚠️</span>
           <div className="alert-text">
             <div className="alert-title">{weatherAlert.title}</div>
@@ -988,7 +1293,7 @@ const App = () => {
         </div>
       )}
       {showCached && !isLoading && (
-        <div className="cache-banner fade-in" role="status">
+        <div className="cache-banner fade-in" role="status" aria-live="polite">
           <span className="cache-icon">⏰</span>
           <span>Showing cached data — unable to fetch live updates</span>
         </div>
@@ -1023,9 +1328,10 @@ const App = () => {
         </div>
       )}
       {weatherData && !isLoading && (
-        <div className={contentVisible ? "fade-in" : ""}>
+        <div id="main-content" className={contentVisible ? "fade-in" : ""}>
           <CurrentWeather data={weatherData} cityName={cityName} units={units} fetchTime={fetchTime} tick={tick} toggleFavorite={toggleFavorite} isFavorite={isFavorite} />
-          <WeatherDetails data={weatherData} units={units} />
+          <WeatherDetails data={weatherData} units={units} moonData={moonData} />
+          {historicalData && <HistoricalCard historical={historicalData} current={weatherData} units={units} />}
           <HourlyForecast data={weatherData} units={units} scrollRef={hourlyScrollRef} />
           <TemperatureChart data={weatherData} units={units} />
           <DailyForecast data={weatherData} units={units} />
@@ -1033,17 +1339,57 @@ const App = () => {
       )}
       {weatherData && !isLoading && (
         <>
-          <button className="share-btn" onClick={shareWeather} aria-label="Share weather" title="Copy weather to clipboard">📋</button>
+          <button className="share-btn" onClick={shareWeather} aria-label="Share weather to clipboard" title="Copy weather to clipboard">📋</button>
           {showShareToast && <div className="share-toast">Copied to clipboard!</div>}
         </>
+      )}
+      {showComparison && compareCities && (
+        <ComparisonModal cities={compareCities} currentCity={{ name: cityName, latitude: weatherData?.latitude, longitude: weatherData?.longitude }} units={units} onClose={() => { setShowComparison(false); setCompareCities(null); }} />
       )}
     </div>
   );
 }
 
+const HistoricalCard = React.memo(function HistoricalCard({ historical, current, units }) {
+  const todayMax = convertTemp(current.daily.temperature_2m_max[0], units.temp);
+  const todayMin = convertTemp(current.daily.temperature_2m_min[0], units.temp);
+  const yearMax = convertTemp(historical.max, units.temp);
+  const yearMin = convertTemp(historical.min, units.temp);
+  const todayInfo = getWeatherInfo(current.daily.weather_code[0]);
+  const yearInfo = historical.code != null ? getWeatherInfo(historical.code) : null;
+  const diff = todayMax - yearMax;
+
+  return (
+    <div className="historical-card glass-card fade-in">
+      <div className="historical-title">📅 1 Year Ago Today ({historical.date})</div>
+      <div className="historical-comparison">
+        <div className="historical-then">
+          <span className="historical-emoji">{yearInfo ? yearInfo.emoji : "❓"}</span>
+          <div className="historical-temps">H: {yearMax}° / L: {yearMin}°</div>
+          <div className="historical-label">Last year</div>
+        </div>
+        <div className="historical-arrow">
+          <span className={`historical-diff ${diff > 0 ? "warmer" : diff < 0 ? "cooler" : "same"}`}>
+            {diff > 0 ? "🔥" : diff < 0 ? "❄️" : "➡️"} {diff > 0 ? "+" : ""}{diff}°
+          </span>
+        </div>
+        <div className="historical-now">
+          <span className="historical-emoji">{todayInfo.emoji}</span>
+          <div className="historical-temps">H: {todayMax}° / L: {todayMin}°</div>
+          <div className="historical-label">Today</div>
+        </div>
+      </div>
+    </div>
+  );
+});
+
 const root = ReactDOM.createRoot(document.getElementById("root"));
-root.render(<App />);
+root.render(
+  <ErrorBoundary>
+    <App />
+  </ErrorBoundary>
+);
 
 if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("/sw.js").catch(() => { });
+  navigator.serviceWorker.register("/sw.js").catch(() => {});
 }
