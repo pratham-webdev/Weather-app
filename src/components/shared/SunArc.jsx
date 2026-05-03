@@ -11,14 +11,39 @@ const SunArc = memo(function SunArc({ data }) {
   const now = new Date();
   const daytime = now >= sunrise && now <= sunset;
 
-  const sunriseMinutes = sunrise.getHours() * 60 + sunrise.getMinutes();
-  const sunsetMinutes = sunset.getHours() * 60 + sunset.getMinutes();
-  const totalMinutes = sunsetMinutes - sunriseMinutes;
-  const nowMinutes = now.getHours() * 60 + now.getMinutes();
-  const progress = daytime ? Math.max(0, Math.min(1, (nowMinutes - sunriseMinutes) / totalMinutes)) : 0;
+  const extractMinutes = (iso) => {
+    const time = iso.split("T")[1];
+    if (!time) return 0;
+    const [h, m] = time.split(":").map(Number);
+    return h * 60 + m;
+  };
+
+  const nowParts = new Intl.DateTimeFormat("en-US", { timeZone: data.timezone, hour: "numeric", minute: "numeric", hour12: false }).formatToParts(now);
+  const nowH = parseInt(nowParts.find(p => p.type === "hour").value, 10);
+  const nowM = parseInt(nowParts.find(p => p.type === "minute").value, 10);
+  const nowMinutes = nowH * 60 + nowM;
+
+  const sunriseMinutes = extractMinutes(sunriseStr);
+  const sunsetMinutes = extractMinutes(sunsetStr);
+  const totalDayMinutes = sunsetMinutes - sunriseMinutes;
+  const totalNightMinutes = (24 * 60) - totalDayMinutes;
+
+  let dayProgress = 0;
+  let nightProgress = 0;
+
+  if (daytime && totalDayMinutes > 0) {
+    dayProgress = Math.max(0, Math.min(1, (nowMinutes - sunriseMinutes) / totalDayMinutes));
+  } else if (!daytime) {
+    if (nowMinutes >= sunsetMinutes) {
+      nightProgress = Math.max(0, Math.min(1, (nowMinutes - sunsetMinutes) / totalNightMinutes));
+    } else {
+      nightProgress = Math.max(0, Math.min(1, ((nowMinutes + 24 * 60) - sunsetMinutes) / totalNightMinutes));
+    }
+  }
 
   const cx = 100, cy = 90, rx = 80, ry = 70;
   const startX = cx - rx, endX = cx + rx;
+  const progress = daytime ? dayProgress : nightProgress;
   const currentX = cx + rx * Math.cos(Math.PI * (1 - progress));
   const currentY = cy - ry * Math.sin(Math.PI * progress);
 
@@ -38,7 +63,12 @@ const SunArc = memo(function SunArc({ data }) {
             <circle cx={currentX} cy={currentY} r="4" fill="#fbbf24" />
           </>
         )}
-        {!daytime && <circle cx={cx} cy={cy - 20} r="5" fill="var(--text-muted)" opacity="0.3" />}
+        {!daytime && (
+          <>
+            <circle cx={currentX} cy={currentY} r="5" fill="var(--text-muted)" opacity="0.6" />
+            <circle cx={currentX} cy={currentY} r="3" fill="var(--text-muted)" opacity="0.4" />
+          </>
+        )}
         <defs>
           <filter id="sunGlow">
             <feGaussianBlur stdDeviation="3" result="blur" />
@@ -48,7 +78,12 @@ const SunArc = memo(function SunArc({ data }) {
       </svg>
       {daytime && (
         <div className="sun-arc-progress">
-          <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>{Math.round(progress * 100)}% of daylight elapsed</span>
+          <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>{Math.round(dayProgress * 100)}% of daylight elapsed</span>
+        </div>
+      )}
+      {!daytime && (
+        <div className="sun-arc-progress">
+          <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>{Math.round(nightProgress * 100)}% of night elapsed</span>
         </div>
       )}
     </div>

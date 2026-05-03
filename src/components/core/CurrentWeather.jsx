@@ -19,12 +19,17 @@ const CurrentWeather = memo(function CurrentWeather({ data, cityName, units, fet
   useEffect(() => {
     const sentinel = sentinelRef.current;
     if (!sentinel) return;
-    const observer = new IntersectionObserver(
-      ([entry]) => setIsCompact(!entry.isIntersecting),
-      { threshold: 0, rootMargin: "-1px 0px 0px 0px" }
-    );
-    observer.observe(sentinel);
-    return () => observer.disconnect();
+    const initTimer = setTimeout(() => {
+      const observer = new IntersectionObserver(
+        ([entry]) => setIsCompact(!entry.isIntersecting),
+        { threshold: 0, rootMargin: "-1px 0px 0px 0px" }
+      );
+      observer.observe(sentinel);
+      const recheck = () => setIsCompact(!sentinel.checkVisibility ? true : sentinel.checkVisibility());
+      window.addEventListener("resize", recheck);
+      return () => { observer.disconnect(); window.removeEventListener("resize", recheck); };
+    }, 150);
+    return () => clearTimeout(initTimer);
   }, []);
 
   return (

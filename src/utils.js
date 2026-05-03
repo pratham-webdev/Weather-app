@@ -180,10 +180,8 @@ export function getMoonPhase(date) {
   jd = c + e + day - 694039.09;
   jd /= 29.5305882;
   b = Math.floor(jd);
-  jd -= b;
-  const raw = Math.round(jd * 8);
-  const phase = ((raw % 8) + 8) % 8;
-  return isNaN(phase) ? 0 : phase;
+  const fraction = jd - b;
+  return fraction;
 }
 
 export function getWeatherMood(code, temp, wind, humidity) {
