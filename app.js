@@ -40,6 +40,27 @@ const WMO_CODES = {
   99: { label: "Thunderstorm w/ Heavy Hail", type: "stormy", emoji: "⛈️" },
 };
 
+const GRADIENTS = {
+  "clear-day": "var(--gradient-sunny)",
+  "clear-night": "var(--gradient-night-clear)",
+  "cloudy-day": "var(--gradient-cloudy)",
+  "cloudy-night": "var(--gradient-night-cloudy)",
+  "rainy-day": "var(--gradient-rainy)",
+  "rainy-night": "var(--gradient-night-rainy)",
+  "snowy-day": "var(--gradient-snowy)",
+  "snowy-night": "var(--gradient-night-snowy)",
+  "stormy-day": "var(--gradient-stormy)",
+  "stormy-night": "var(--gradient-night-stormy)",
+  "foggy-day": "var(--gradient-foggy)",
+  "foggy-night": "var(--gradient-night-foggy)",
+};
+
+function getBgGradient(code, daytime) {
+  const info = getWeatherInfo(code);
+  const key = `${info.type}-${daytime ? "day" : "night"}`;
+  return GRADIENTS[key] || (daytime ? "var(--gradient-cloudy)" : "var(--gradient-night-cloudy)");
+}
+
 function getWeatherInfo(code) {
   return WMO_CODES[code] || { label: "Unknown", type: "cloudy", emoji: "🌥️" };
 }
@@ -52,6 +73,15 @@ function convertTemp(c, unit) {
 function convertWind(kmh, unit) {
   if (unit === "mph") return Math.round(kmh * 0.621371);
   return Math.round(kmh);
+}
+
+function convertVisibility(meters) {
+  if (meters == null || isNaN(meters)) return "N/A";
+  if (meters >= 1000) {
+    const km = (meters / 1000).toFixed(1);
+    return `${km} km`;
+  }
+  return `${Math.round(meters)} m`;
 }
 
 function windDirection(degrees) {
@@ -91,6 +121,16 @@ function getCurrentHourInTimezone(timezone) {
   const now = new Date();
   const parts = new Intl.DateTimeFormat("en-US", { timeZone: timezone, hour: "numeric", hour12: false }).formatToParts(now);
   return parseInt(parts.find(p => p.type === "hour").value, 10);
+}
+
+function isDaytime(data) {
+  if (!data?.daily?.sunrise?.[0] || !data?.daily?.sunset?.[0]) return true;
+  const sunriseStr = data.daily.sunrise[0];
+  const sunsetStr = data.daily.sunset[0];
+  const now = new Date();
+  const sunriseTime = new Date(sunriseStr);
+  const sunsetTime = new Date(sunsetStr);
+  return now >= sunriseTime && now <= sunsetTime;
 }
 
 const WeatherIcon = React.memo(function WeatherIcon({ code, size = "medium" }) {
@@ -188,20 +228,33 @@ function LoadingState() {
   );
 }
 
-const CurrentWeather = React.memo(function CurrentWeather({ data, cityName, units }) {
+const CurrentWeather = React.memo(function CurrentWeather({ data, cityName, units, fetchTime, tick, toggleFavorite, isFavorite }) {
   const info = getWeatherInfo(data.current.weather_code);
   const { dateStr, timeStr } = getCurrentTimeInTimezone(data.timezone);
   const tzAbbr = data.timezone_abbreviation || "";
+  const elapsed = Math.round((Date.now() - fetchTime) / 60000);
+  const updatedLabel = elapsed < 1 ? "Just now" : elapsed < 60 ? `${elapsed}m ago` : `${Math.floor(elapsed / 60)}h ${elapsed % 60}m ago`;
+  const daytime = isDaytime(data);
+  const weatherClass = `${info.type}-${daytime ? "day" : "night"}`;
 
   return (
-    <div className={`current-weather glass-card weather-${info.type}`}>
+    <div className={`current-weather glass-card weather-${weatherClass}`}>
       <div className="current-content">
         <div className="current-left">
-          <div className="current-city">{cityName || "Your Location"}</div>
+          <div className="current-city-header">
+            <span>{cityName || "Your Location"}</span>
+            <button className="favorite-btn" onClick={toggleFavorite} title={isFavorite ? "Remove from favorites" : "Add to favorites"} aria-label={isFavorite ? "Remove from favorites" : "Add to favorites"}>
+              {isFavorite ? "★" : "☆"}
+            </button>
+          </div>
           <div className="current-temp">{convertTemp(data.current.temperature_2m, units.temp)}°{units.temp}</div>
           <div className="current-condition">{info.emoji} {info.label}</div>
           <div className="current-high-low">H: {convertTemp(data.daily.temperature_2m_max[0], units.temp)}° L: {convertTemp(data.daily.temperature_2m_min[0], units.temp)}°</div>
           <div className="current-date">{dateStr} · {timeStr}{tzAbbr ? ` ${tzAbbr}` : ""}</div>
+          <div className="current-updated">Updated {updatedLabel}</div>
+        </div>
+        <div className="current-center">
+          <SunArc data={data} />
         </div>
         <div className="current-right">
           <AnimatedIcon type={info.type} />
@@ -226,32 +279,85 @@ const WeatherDetails = React.memo(function WeatherDetails({ data, units }) {
     else { aqiLabel = "Hazardous"; aqiColor = "#7f1d1d"; }
   }
 
+  const uvVal = Math.round(data.daily.uv_index_max[0] * 10) / 10;
+  let uvLevel = "Low";
+  let uvColor = "#22c55e";
+  if (uvVal >= 11) { uvLevel = "Extreme"; uvColor = "#7f1d1d"; }
+  else if (uvVal >= 8) { uvLevel = "Very High"; uvColor = "#a855f7"; }
+  else if (uvVal >= 6) { uvLevel = "High"; uvColor = "#f97316"; }
+  else if (uvVal >= 3) { uvLevel = "Moderate"; uvColor = "#eab308"; }
+
+  const windDeg = data.current.wind_direction_10m;
+  const windSpeed = convertWind(data.current.wind_speed_10m, units.wind);
+  const windUnit = units.wind === "mph" ? "mph" : "km/h";
+
   const details = [
-    { icon: "💧", label: "Humidity", value: data.current.relative_humidity_2m, unit: "%" },
-    { icon: "💨", label: "Wind", value: `${convertWind(data.current.wind_speed_10m, units.wind)} ${windDirection(data.current.wind_direction_10m)}`, unit: units.wind === "mph" ? "mph" : "km/h" },
-    { icon: "🌬️", label: "Gusts", value: convertWind(data.current.wind_gusts_10m, units.wind), unit: units.wind === "mph" ? " mph" : " km/h" },
-    { icon: "☀️", label: "UV Index", value: Math.round(data.daily.uv_index_max[0] * 10) / 10, unit: "" },
-    { icon: "🌡️", label: "Pressure", value: Math.round(data.current.surface_pressure), unit: " hPa" },
-    { icon: "🤔", label: "Feels Like", value: convertTemp(data.current.apparent_temperature, units.temp), unit: `°${units.temp}` },
-    { icon: "🌅", label: "Sunrise", value: sunrise, unit: "" },
-    { icon: "🌇", label: "Sunset", value: sunset, unit: "" },
-    { icon: "🫁", label: "AQI", value: aqi !== null && aqi !== undefined ? aqi : "N/A", unit: aqi !== null && aqi !== undefined ? ` (${aqiLabel})` : "" },
+    { icon: "💧", label: "Humidity", value: data.current.relative_humidity_2m, unit: "%", type: "plain" },
+    { type: "wind", speed: windSpeed, unit: windUnit, direction: windDeg, gusts: convertWind(data.current.wind_gusts_10m, units.wind) },
+    { icon: "🌡️", label: "Pressure", value: Math.round(data.current.surface_pressure), unit: " hPa", type: "plain" },
+    { icon: "🤔", label: "Feels Like", value: convertTemp(data.current.apparent_temperature, units.temp), unit: `°${units.temp}`, type: "plain" },
+    { icon: "💦", label: "Dew Point", value: convertTemp(data.current.dew_point_2m, units.temp), unit: `°${units.temp}`, type: "plain" },
+    { icon: "👁️", label: "Visibility", value: convertVisibility(data.current.visibility, units.temp), unit: "", type: "plain" },
+    { type: "uv", value: uvVal, level: uvLevel, color: uvColor },
+    { icon: "🌅", label: "Sunrise", value: sunrise, unit: "", type: "plain" },
+    { icon: "🌇", label: "Sunset", value: sunset, unit: "", type: "plain" },
+    { icon: "🫁", label: "AQI", value: aqi !== null && aqi !== undefined ? aqi : "N/A", unit: aqi !== null && aqi !== undefined ? ` (${aqiLabel})` : "", type: "plain" },
   ];
 
   return (
-    <div className="details-grid">
-      {details.map((d, i) => (
-        <div key={i} className="glass-card detail-card" style={d.unit.includes(aqiLabel) ? { borderColor: aqiColor } : {}}>
-          <div className="detail-icon">{d.icon}</div>
-          <div className="detail-label">{d.label}</div>
-          <div className="detail-value">{d.value}<span className="detail-unit">{d.unit}</span></div>
-        </div>
-      ))}
-    </div>
+    <>
+      <div className="details-grid">
+        {details.map((d, i) => {
+        if (d.type === "wind") {
+          return (
+            <div key={i} className="glass-card detail-card detail-wind" style={{ "--i": i }}>
+              <div className="detail-label">Wind</div>
+              <svg viewBox="0 0 60 60" className="compass-svg">
+                <circle cx="30" cy="30" r="28" fill="none" stroke="var(--border)" strokeWidth="1" />
+                <text x="30" y="8" textAnchor="middle" fontSize="6" fill="var(--text-muted)" fontWeight="600">N</text>
+                <text x="54" y="32" textAnchor="middle" fontSize="6" fill="var(--text-muted)">E</text>
+                <text x="30" y="56" textAnchor="middle" fontSize="6" fill="var(--text-muted)">S</text>
+                <text x="6" y="32" textAnchor="middle" fontSize="6" fill="var(--text-muted)">W</text>
+                <line x1="30" y1="30" x2="30" y2="8" stroke={d.color || "var(--accent)"} strokeWidth="2" strokeLinecap="round" transform={`rotate(${d.direction}, 30, 30)`} />
+                <circle cx="30" cy="30" r="3" fill="var(--accent)" />
+              </svg>
+              <div className="detail-value">{d.speed}<span className="detail-unit"> {d.unit}</span></div>
+              <div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>Gusts {d.gusts} {d.unit}</div>
+            </div>
+          );
+        }
+        if (d.type === "uv") {
+          return (
+            <div key={i} className="glass-card detail-card detail-uv" style={{ "--i": i }}>
+              <div className="detail-icon">☀️</div>
+              <div className="detail-label">UV Index</div>
+              <div className="detail-value">{d.value}<span className="detail-unit" style={{ color: d.color }}> ({d.level})</span></div>
+              <div className="uv-scale">
+                <div className="uv-scale-track">
+                  <div className="uv-scale-fill" style={{ width: `${Math.min(d.value / 11 * 100, 100)}%`, background: d.color }} />
+                </div>
+                <div className="uv-scale-labels">
+                  <span>0</span><span>3</span><span>6</span><span>8</span><span>11+</span>
+                </div>
+              </div>
+            </div>
+          );
+        }
+        return (
+          <div key={i} className="glass-card detail-card" style={{ "--i": i }}>
+            <div className="detail-icon">{d.icon}</div>
+            <div className="detail-label">{d.label}</div>
+            <div className="detail-value">{d.value}<span className="detail-unit">{d.unit}</span></div>
+          </div>
+        );
+      })}
+      </div>
+      <AQIDetails aqi={aqi} aqiDetails={data.aqiDetails} aqiLabel={aqiLabel} />
+    </>
   );
 });
 
-const HourlyForecast = React.memo(function HourlyForecast({ data, units }) {
+const HourlyForecast = React.memo(function HourlyForecast({ data, units, scrollRef }) {
   const currentHour = getCurrentHourInTimezone(data.timezone);
   const today = data.daily.time[0];
 
@@ -272,6 +378,7 @@ const HourlyForecast = React.memo(function HourlyForecast({ data, units }) {
     hours.push({
       time: hourStr,
       temp: convertTemp(data.hourly.temperature_2m[itemIdx], units.temp),
+      feelsLike: convertTemp(data.hourly.apparent_temperature[itemIdx], units.temp),
       code: data.hourly.weather_code[itemIdx],
       precip: data.hourly.precipitation_probability[itemIdx] != null ? data.hourly.precipitation_probability[itemIdx] : null,
     });
@@ -280,15 +387,205 @@ const HourlyForecast = React.memo(function HourlyForecast({ data, units }) {
   return (
     <div className="hourly-section">
       <div className="section-title">🕐 24-Hour Forecast</div>
-      <div className="hourly-scroll">
+      <div className="hourly-scroll" ref={scrollRef}>
         {hours.map((h, i) => (
-          <div key={i} className="glass-card hourly-card">
+          <div key={i} className="glass-card hourly-card" style={{ "--i": i }}>
             <div className="hourly-time">{h.time}</div>
             <div className="hourly-icon"><WeatherIcon code={h.code} /></div>
             <div className="hourly-temp">{h.temp}°</div>
+            <div className="hourly-feels">Feels {h.feelsLike}°</div>
             {h.precip !== null && <div style={{ fontSize: "0.7rem", color: "var(--text-muted)", marginTop: "2px" }}>{h.precip}%💧</div>}
           </div>
         ))}
+      </div>
+    </div>
+  );
+});
+
+const SunArc = React.memo(function SunArc({ data }) {
+  const sunriseStr = data.daily.sunrise[0];
+  const sunsetStr = data.daily.sunset[0];
+  if (!sunriseStr || !sunsetStr) return null;
+
+  const sunrise = new Date(sunriseStr);
+  const sunset = new Date(sunsetStr);
+  const now = new Date();
+  const daytime = now >= sunrise && now <= sunset;
+
+  const sunriseMinutes = sunrise.getHours() * 60 + sunrise.getMinutes();
+  const sunsetMinutes = sunset.getHours() * 60 + sunset.getMinutes();
+  const totalMinutes = sunsetMinutes - sunriseMinutes;
+  const nowMinutes = now.getHours() * 60 + now.getMinutes();
+  const progress = daytime ? Math.max(0, Math.min(1, (nowMinutes - sunriseMinutes) / totalMinutes)) : 0;
+
+  const cx = 100;
+  const cy = 90;
+  const rx = 80;
+  const ry = 70;
+  const startX = cx - rx;
+  const endX = cx + rx;
+  const currentX = cx + rx * Math.cos(Math.PI * (1 - progress));
+  const currentY = cy - ry * Math.sin(Math.PI * progress);
+
+  return (
+    <div className="sun-arc-inline">
+      <div className="sun-arc-header">
+        <span>🌅 {formatLocalTime(sunriseStr)}</span>
+        <span className="sun-arc-label">{daytime ? "☀️ Sun is up" : "🌙 Night time"}</span>
+        <span>🌇 {formatLocalTime(sunsetStr)}</span>
+      </div>
+      <svg viewBox="0 0 200 110" className="sun-arc-svg">
+        <path d={`M ${startX} ${cy} A ${rx} ${ry} 0 0 1 ${endX} ${cy}`} fill="none" stroke="var(--border)" strokeWidth="1.5" strokeDasharray="4 4" />
+        {daytime && (
+          <>
+            <path d={`M ${startX} ${cy} A ${rx} ${ry} 0 0 1 ${currentX} ${currentY}`} fill="none" stroke="var(--accent)" strokeWidth="2" />
+            <circle cx={currentX} cy={currentY} r="6" fill="#fbbf24" filter="url(#sunGlow)" />
+            <circle cx={currentX} cy={currentY} r="4" fill="#fbbf24" />
+          </>
+        )}
+        {!daytime && <circle cx={cx} cy={cy - 20} r="5" fill="var(--text-muted)" opacity="0.3" />}
+        <defs>
+          <filter id="sunGlow">
+            <feGaussianBlur stdDeviation="3" result="blur" />
+            <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+          </filter>
+        </defs>
+      </svg>
+      {daytime && (
+        <div className="sun-arc-progress">
+          <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>{Math.round(progress * 100)}% of daylight elapsed</span>
+        </div>
+      )}
+    </div>
+  );
+});
+
+const AQIDetails = React.memo(function AQIDetails({ aqi, aqiDetails, aqiLabel }) {
+  const [expanded, setExpanded] = React.useState(true);
+  if (!aqiDetails) return null;
+
+  const pollutants = [
+    { name: "PM2.5", value: aqiDetails.pm25, unit: "μg/m³", max: 35 },
+    { name: "PM10", value: aqiDetails.pm10, unit: "μg/m³", max: 50 },
+    { name: "O₃", value: aqiDetails.ozone, unit: "μg/m³", max: 100 },
+    { name: "NO₂", value: aqiDetails.no2, unit: "μg/m³", max: 40 },
+  ].filter(p => p.value !== null);
+
+  if (pollutants.length === 0) return null;
+
+  return (
+    <div className="aqi-expand">
+      <button className="aqi-toggle" onClick={() => setExpanded(e => !e)} aria-expanded={expanded}>
+        {expanded ? "▲" : "▼"} Air Quality Breakdown
+      </button>
+      {expanded && (
+        <div className="aqi-breakdown fade-in">
+          {pollutants.map((p, i) => {
+            const pct = Math.min((p.value / p.max) * 100, 100);
+            const color = pct <= 50 ? "#22c55e" : pct <= 100 ? "#eab308" : "#ef4444";
+            return (
+              <div key={i} className="aqi-pollutant">
+                <div className="aqi-pollutant-header">
+                  <span className="aqi-pollutant-name">{p.name}</span>
+                  <span className="aqi-pollutant-value">{p.value} {p.unit}</span>
+                </div>
+                <div className="aqi-bar-track">
+                  <div className="aqi-bar-fill" style={{ width: `${pct}%`, background: color }} />
+                </div>
+              </div>
+            );
+          })}
+          <div className="aqi-ref">Reference: WHO Air Quality Guidelines (2021)</div>
+        </div>
+      )}
+    </div>
+  );
+});
+
+const TemperatureChart = React.memo(function TemperatureChart({ data, units }) {
+  const currentHour = getCurrentHourInTimezone(data.timezone);
+  const today = data.daily.time[0];
+
+  const hours = [];
+  const precips = [];
+  const startIdx = data.hourly.time.findIndex(t => {
+    const datePart = t.split("T")[0];
+    const timePart = t.split("T")[1];
+    if (!timePart) return false;
+    return datePart === today && parseInt(timePart.split(":")[0], 10) === currentHour;
+  });
+
+  for (let i = 0; i < 24; i++) {
+    const itemIdx = (startIdx >= 0 ? startIdx : 0) + i;
+    if (itemIdx >= data.hourly.time.length) break;
+    hours.push(convertTemp(data.hourly.temperature_2m[itemIdx], units.temp));
+    precips.push(data.hourly.precipitation_probability[itemIdx] ?? 0);
+  }
+
+  if (hours.length < 2) return null;
+
+  const minT = Math.min(...hours);
+  const maxT = Math.max(...hours);
+  const range = maxT - minT || 1;
+  const padding = 20;
+  const width = 500;
+  const height = 150;
+  const chartH = height - padding * 2;
+  const chartW = width - 30;
+
+  const points = hours.map((t, i) => ({
+    x: (i / (hours.length - 1)) * chartW + 15,
+    y: padding + chartH - ((t - minT) / range) * chartH,
+    temp: t,
+  }));
+
+  let pathD = `M ${points[0].x} ${points[0].y}`;
+  for (let i = 1; i < points.length; i++) {
+    const prev = points[i - 1];
+    const curr = points[i];
+    const cpx1 = prev.x + (curr.x - prev.x) / 3;
+    const cpx2 = curr.x - (curr.x - prev.x) / 3;
+    pathD += ` C ${cpx1} ${prev.y}, ${cpx2} ${curr.y}, ${curr.x} ${curr.y}`;
+  }
+
+  const areaD = pathD + ` L ${points[points.length - 1].x} ${height - padding} L ${points[0].x} ${height - padding} Z`;
+
+  const barWidth = Math.max(chartW / hours.length - 2, 2);
+  const precipBars = precips.map((p, i) => ({
+    x: (i / (hours.length - 1)) * chartW + 15 - barWidth / 2,
+    h: (p / 100) * chartH * 0.3,
+    p,
+  }));
+
+  return (
+    <div className="chart-section">
+      <div className="section-title">📈 Temperature & Precipitation</div>
+      <div className="glass-card chart-card">
+        <div className="chart-labels">
+          <span>{minT}°</span>
+          <span>{maxT}°</span>
+        </div>
+        <svg viewBox={`0 0 ${width} ${height}`} className="chart-svg" preserveAspectRatio="none">
+          <defs>
+            <linearGradient id="tempGrad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.4" />
+              <stop offset="100%" stopColor="var(--accent)" stopOpacity="0.02" />
+            </linearGradient>
+          </defs>
+          {precipBars.map((b, i) => (
+            <rect key={i} x={b.x} y={height - padding - b.h} width={barWidth} height={b.h} fill="var(--accent)" opacity={0.15 + (b.p / 100) * 0.35} rx="1" />
+          ))}
+          <path d={areaD} fill="url(#tempGrad)" />
+          <path d={pathD} fill="none" stroke="var(--accent)" strokeWidth="2.5" strokeLinecap="round" />
+          {points.map((p, i) => (
+            <circle key={i} cx={p.x} cy={p.y} r={i === 0 ? 4 : 2.5} fill={i === 0 ? "var(--accent)" : "var(--text-muted)"} opacity={i === 0 ? 1 : 0.5} />
+          ))}
+        </svg>
+        <div className="chart-x-labels">
+          {hours.map((_, i) => (
+            <span key={i} style={{ opacity: i === 0 || i % 4 === 0 ? 1 : 0 }}>{i === 0 ? "Now" : `${i}h`}</span>
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -300,16 +597,21 @@ const DailyForecast = React.memo(function DailyForecast({ data, units }) {
   const globalMax = Math.max(...allTemps);
   const range = globalMax - globalMin || 1;
 
-  const days = data.daily.time.map((t, i) => ({
-    date: new Date(t + "T00:00:00"),
-    day: i === 0 ? "Today" : formatLocalDate(t + "T00:00:00", { weekday: "short" }),
-    code: data.daily.weather_code[i],
-    min: convertTemp(data.daily.temperature_2m_min[i], units.temp),
-    max: convertTemp(data.daily.temperature_2m_max[i], units.temp),
-    minRaw: data.daily.temperature_2m_min[i],
-    maxRaw: data.daily.temperature_2m_max[i],
-    precip: data.daily.precipitation_probability_max[i] != null ? data.daily.precipitation_probability_max[i] : null,
-  }));
+  const days = data.daily.time.map((t, i) => {
+    const date = new Date(t + "T00:00:00");
+    const dayOfWeek = date.getDay();
+    return {
+      date,
+      day: i === 0 ? "Today" : formatLocalDate(t + "T00:00:00", { weekday: "short" }),
+      code: data.daily.weather_code[i],
+      min: convertTemp(data.daily.temperature_2m_min[i], units.temp),
+      max: convertTemp(data.daily.temperature_2m_max[i], units.temp),
+      minRaw: data.daily.temperature_2m_min[i],
+      maxRaw: data.daily.temperature_2m_max[i],
+      precip: data.daily.precipitation_probability_max[i] != null ? data.daily.precipitation_probability_max[i] : null,
+      isWeekend: dayOfWeek === 0 || dayOfWeek === 6,
+    };
+  });
 
   return (
     <div className="daily-section">
@@ -320,7 +622,7 @@ const DailyForecast = React.memo(function DailyForecast({ data, units }) {
             const leftPct = ((d.minRaw - globalMin) / range) * 100;
             const widthPct = ((d.maxRaw - d.minRaw) / range) * 100;
             return (
-              <div key={i} className="daily-item">
+              <div key={i} className={`daily-item${d.isWeekend ? " weekend" : ""}`} style={{ "--i": i }}>
                 <div className="daily-day">{d.day}</div>
                 <div className="daily-icon"><WeatherIcon code={d.code} size="small" /></div>
                 <div className="daily-temp-bar">
@@ -359,10 +661,18 @@ const App = () => {
   const [recentSearches, setRecentSearches] = useState(() => {
     try { return JSON.parse(localStorage.getItem("weather-recent") || "[]"); } catch { return []; }
   });
+  const [favorites, setFavorites] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("weather-favorites") || "[]"); } catch { return []; }
+  });
   const [contentVisible, setContentVisible] = useState(false);
   const [showShareToast, setShowShareToast] = useState(false);
   const [searchFocused, setSearchFocused] = useState(false);
+  const [showCached, setShowCached] = useState(false);
+  const [fetchTime, setFetchTime] = useState(Date.now());
+  const [searchIdx, setSearchIdx] = useState(-1);
+  const [tick, setTick] = useState(0);
   const searchRef = useRef(null);
+  const hourlyScrollRef = useRef(null);
   const debounceRef = useRef(null);
   const refreshTimerRef = useRef(null);
 
@@ -390,10 +700,10 @@ const App = () => {
     try {
       const [weatherRes, aqiRes] = await Promise.all([
         fetch(
-          `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,surface_pressure&hourly=temperature_2m,weather_code,wind_speed_10m,precipitation_probability&daily=weather_code,temperature_2m_max,temperature_2m_min,uv_index_max,sunrise,sunset,precipitation_probability_max&timezone=auto&forecast_days=7`
+          `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,surface_pressure,dew_point_2m,visibility&hourly=temperature_2m,apparent_temperature,weather_code,wind_speed_10m,precipitation_probability&daily=weather_code,temperature_2m_max,temperature_2m_min,uv_index_max,sunrise,sunset,precipitation_probability_max&timezone=auto&forecast_days=7`
         ),
         fetch(
-          `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lat}&longitude=${lon}&current=us_aqi`
+          `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lat}&longitude=${lon}&current=us_aqi,pm2_5,pm10,ozone,nitrogen_dioxide`
         )
       ]);
       if (!weatherRes.ok) throw new Error("Failed to fetch weather data");
@@ -401,11 +711,19 @@ const App = () => {
       if (aqiRes.ok) {
         const aqiData = await aqiRes.json();
         weatherData.aqi = aqiData.current?.us_aqi || null;
+        weatherData.aqiDetails = {
+          pm25: aqiData.current?.pm2_5 ?? null,
+          pm10: aqiData.current?.pm10 ?? null,
+          ozone: aqiData.current?.ozone ?? null,
+          no2: aqiData.current?.nitrogen_dioxide ?? null,
+        };
       }
       setWeatherData(weatherData);
       setCityName(name);
+      setFetchTime(Date.now());
       setFallbackMode(false);
       setLocError(null);
+      localStorage.setItem("weather-cache", JSON.stringify({ data: weatherData, name, ts: Date.now() }));
       if (name !== "Your Location") {
         setRecentSearches(prev => {
           const entry = { name: name, latitude: lat, longitude: lon };
@@ -418,6 +736,21 @@ const App = () => {
       if (refreshTimerRef.current) clearInterval(refreshTimerRef.current);
       refreshTimerRef.current = setInterval(() => fetchWeather(lat, lon, name), 600000);
     } catch (e) {
+      const cached = localStorage.getItem("weather-cache");
+      if (cached) {
+        try {
+          const { data, name: cachedName, ts } = JSON.parse(cached);
+          if (Date.now() - ts < 3600000) {
+            setWeatherData(data);
+            setCityName(cachedName);
+            setFetchTime(ts);
+            setIsLoading(false);
+            setContentVisible(true);
+            setShowCached(true);
+            return;
+          }
+        } catch {}
+      }
       setError(e.message);
       setIsLoading(false);
     }
@@ -472,19 +805,80 @@ const App = () => {
 
   useEffect(() => {
     const handleKeyDown = (e) => {
-      if (e.key === "Escape") { setSearchResults([]); setSearchQuery(""); }
+      if (e.key === "/") {
+        e.preventDefault();
+        if (document.activeElement.tagName !== "INPUT" && document.activeElement.tagName !== "TEXTAREA") {
+          searchRef.current?.querySelector("input")?.focus();
+        }
+      }
+      if (e.key === "Escape") { setSearchResults([]); setSearchQuery(""); setSearchIdx(-1); }
+      if (e.key === "ArrowDown" && searchResults.length > 0 && document.activeElement.tagName === "INPUT") {
+        e.preventDefault();
+        setSearchIdx(i => Math.min(i + 1, searchResults.length - 1));
+      }
+      if (e.key === "ArrowUp" && searchResults.length > 0 && document.activeElement.tagName === "INPUT") {
+        e.preventDefault();
+        setSearchIdx(i => Math.max(i - 1, 0));
+      }
+      if (e.key === "Enter" && searchIdx >= 0 && searchResults.length > 0) {
+        e.preventDefault();
+        const r = searchResults[searchIdx];
+        fetchWeather(r.latitude, r.longitude, `${r.name}, ${r.country}`);
+        setSearchResults([]);
+        setSearchQuery("");
+        setSearchIdx(-1);
+      }
+      if (e.key === "ArrowRight" && hourlyScrollRef.current) {
+        hourlyScrollRef.current.scrollBy({ left: 200, behavior: "smooth" });
+      }
+      if (e.key === "ArrowLeft" && hourlyScrollRef.current) {
+        hourlyScrollRef.current.scrollBy({ left: -200, behavior: "smooth" });
+      }
       if (e.key === "l" || e.key === "L") { if (document.activeElement.tagName !== "INPUT") handleLocationRequest(); }
       if (e.key === "t" || e.key === "T") { if (document.activeElement.tagName !== "INPUT") toggleTheme(); }
     };
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [handleLocationRequest]);
+  }, [handleLocationRequest, toggleTheme, fetchWeather, searchResults, searchIdx]);
 
   useEffect(() => {
     return () => { if (refreshTimerRef.current) clearInterval(refreshTimerRef.current); };
   }, []);
 
-  const toggleTheme = () => setTheme(t => t === "dark" ? "light" : "dark");
+  useEffect(() => {
+    const interval = setInterval(() => setTick(t => t + 1), 60000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const toggleTheme = () => {
+    if (document.startViewTransition) {
+      document.startViewTransition(() => {
+        setTheme(t => t === "dark" ? "light" : "dark");
+      });
+    } else {
+      setTheme(t => t === "dark" ? "light" : "dark");
+    }
+  };
+
+  const toggleFavorite = useCallback(() => {
+    if (!cityName) return;
+    setFavorites(prev => {
+      const exists = prev.find(f => f.name === cityName);
+      let updated;
+      if (exists) {
+        updated = prev.filter(f => f.name !== cityName);
+      } else {
+        const lat = weatherData?.latitude;
+        const lon = weatherData?.longitude;
+        if (lat == null || lon == null) return prev;
+        updated = [...prev, { name: cityName, latitude: lat, longitude: lon }].slice(0, 8);
+      }
+      localStorage.setItem("weather-favorites", JSON.stringify(updated));
+      return updated;
+    });
+  }, [cityName, weatherData]);
+
+  const isFavorite = favorites.some(f => f.name === cityName);
 
   const shareWeather = useCallback(() => {
     if (!weatherData) return;
@@ -508,7 +902,7 @@ const App = () => {
 
   return (
     <div className="app-container">
-      {weatherData && <div className="animated-bg" style={{ background: getWeatherInfo(weatherData.current.weather_code).type === "clear" ? "var(--gradient-sunny)" : getWeatherInfo(weatherData.current.weather_code).type === "rainy" ? "var(--gradient-rainy)" : getWeatherInfo(weatherData.current.weather_code).type === "snowy" ? "var(--gradient-snowy)" : getWeatherInfo(weatherData.current.weather_code).type === "stormy" ? "var(--gradient-stormy)" : getWeatherInfo(weatherData.current.weather_code).type === "foggy" ? "var(--gradient-foggy)" : "var(--gradient-cloudy)" }} />}
+      {weatherData && <div className="animated-bg" style={{ background: getBgGradient(weatherData.current.weather_code, isDaytime(weatherData)) }} />}
       <div className="header glass-card">
         <div className="logo">
           <div className="logo-icon">⛅</div>
@@ -531,8 +925,8 @@ const App = () => {
             />
             {searchResults.length > 0 && (
               <div className="search-results">
-                {searchResults.map(r => (
-                  <div key={r.id} className="search-result-item" onClick={() => {
+                {searchResults.map((r, idx) => (
+                  <div key={r.id} className={`search-result-item${idx === searchIdx ? " highlighted" : ""}`} onClick={() => {
                     fetchWeather(r.latitude, r.longitude, `${r.name}, ${r.country}`);
                     setSearchResults([]);
                     setSearchQuery("");
@@ -571,6 +965,19 @@ const App = () => {
         </div>
       </div>
 
+      {favorites.length > 0 && !isLoading && (
+        <div className="favorites-bar fade-in">
+          <div className="favorites-label">Favorites</div>
+          <div className="favorites-scroll">
+            {favorites.map((f, i) => (
+              <div key={i} className={`favorite-chip ${f.name === cityName ? "active" : ""}`} onClick={() => fetchWeather(f.latitude, f.longitude, f.name)}>
+                {f.name}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {weatherAlert && !isLoading && (
         <div className="alert-banner fade-in" role="alert">
           <span className="alert-icon">⚠️</span>
@@ -578,6 +985,12 @@ const App = () => {
             <div className="alert-title">{weatherAlert.title}</div>
             <div className="alert-desc">{weatherAlert.desc}</div>
           </div>
+        </div>
+      )}
+      {showCached && !isLoading && (
+        <div className="cache-banner fade-in" role="status">
+          <span className="cache-icon">⏰</span>
+          <span>Showing cached data — unable to fetch live updates</span>
         </div>
       )}
 
@@ -611,9 +1024,10 @@ const App = () => {
       )}
       {weatherData && !isLoading && (
         <div className={contentVisible ? "fade-in" : ""}>
-          <CurrentWeather data={weatherData} cityName={cityName} units={units} />
+          <CurrentWeather data={weatherData} cityName={cityName} units={units} fetchTime={fetchTime} tick={tick} toggleFavorite={toggleFavorite} isFavorite={isFavorite} />
           <WeatherDetails data={weatherData} units={units} />
-          <HourlyForecast data={weatherData} units={units} />
+          <HourlyForecast data={weatherData} units={units} scrollRef={hourlyScrollRef} />
+          <TemperatureChart data={weatherData} units={units} />
           <DailyForecast data={weatherData} units={units} />
         </div>
       )}
@@ -631,24 +1045,5 @@ const root = ReactDOM.createRoot(document.getElementById("root"));
 root.render(<App />);
 
 if ("serviceWorker" in navigator) {
-  const swCode = `
-    const CACHE = "weather-v1";
-    self.addEventListener("install", e => { self.skipWaiting(); });
-    self.addEventListener("activate", e => { e.waitUntil(clients.claim()); });
-    self.addEventListener("fetch", e => {
-      if (e.request.url.includes("open-meteo.com")) {
-        e.respondWith(
-          caches.open(CACHE).then(cache =>
-            fetch(e.request).then(res => {
-              cache.put(e.request, res.clone());
-              return res;
-            }).catch(() => caches.match(e.request))
-          )
-        );
-      }
-    });
-  `;
-  const blob = new Blob([swCode], { type: "application/javascript" });
-  const swUrl = URL.createObjectURL(blob);
-  navigator.serviceWorker.register(swUrl).catch(() => { });
+  navigator.serviceWorker.register("/sw.js").catch(() => { });
 }
