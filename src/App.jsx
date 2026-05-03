@@ -61,6 +61,7 @@ export default function App() {
   const [showComparison, setShowComparison] = useState(false);
   const [progressVisible, setProgressVisible] = useState(false);
   const [activeTab, setActiveTab] = useState("today");
+  const [tabsCompact, setTabsCompact] = useState(false);
   const [audioMode, setAudioMode] = useState(() => localStorage.getItem("audio-mode") || "lofi");
   const [audioVolume, setAudioVolume] = useState(() => parseFloat(localStorage.getItem("audio-vol") || "0.3"));
   const [audioPrompted, setAudioPrompted] = useState(false);
@@ -364,9 +365,9 @@ export default function App() {
 
       {weatherData && !isLoading && (
         <div id="main-content" className={contentVisible ? "fade-in" : ""}>
-          <CurrentWeather data={weatherData} cityName={cityName} units={units} fetchTime={fetchTime} tick={tick} toggleFavorite={toggleFavorite} isFavorite={isFavorite} mood={mood} historical={historicalData} />
+          <CurrentWeather data={weatherData} cityName={cityName} units={units} fetchTime={fetchTime} tick={tick} toggleFavorite={toggleFavorite} isFavorite={isFavorite} mood={mood} historical={historicalData} onCompactChange={setTabsCompact} />
 
-          <nav className="tab-bar glass-card" role="tablist">
+          <nav className={`tab-bar glass-card${tabsCompact ? " tabs-compact" : ""}`} role="tablist">
             {TABS.map(tab => (
               <button key={tab.id} role="tab" aria-selected={activeTab === tab.id} className={`tab-btn${activeTab === tab.id ? " active" : ""}`} onClick={() => setActiveTab(tab.id)}>
                 <span className="tab-icon">{tab.icon}</span>

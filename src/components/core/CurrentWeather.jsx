@@ -4,7 +4,7 @@ import AnimatedIcon from "./AnimatedIcon.jsx";
 import SunArc from "../shared/SunArc.jsx";
 import WeatherIcon from "./WeatherIcon.jsx";
 
-const CurrentWeather = memo(function CurrentWeather({ data, cityName, units, fetchTime, tick, toggleFavorite, isFavorite, mood, historical }) {
+const CurrentWeather = memo(function CurrentWeather({ data, cityName, units, fetchTime, tick, toggleFavorite, isFavorite, mood, historical, onCompactChange }) {
   const info = getWeatherInfo(data.current.weather_code);
   const { dateStr, timeStr } = getCurrentTimeInTimezone(data.timezone);
   const tzAbbr = data.timezone_abbreviation || "";
@@ -24,7 +24,9 @@ const CurrentWeather = memo(function CurrentWeather({ data, cityName, units, fet
       if (!card) return;
       const check = () => {
         const top = card.getBoundingClientRect().top;
-        setIsCompact(top <= 0);
+        const newCompact = top <= 0;
+        setIsCompact(newCompact);
+        onCompactChange?.(newCompact);
         tickingRef.current = false;
       };
       const onScroll = () => {

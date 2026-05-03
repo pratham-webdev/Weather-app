@@ -3,10 +3,12 @@ import { TRIVIA_QUESTIONS, getStreak, saveStreak, getBestScore, saveBestScore } 
 
 const API_URL = "https://opentdb.com/api.php?amount=7&category=17&type=multiple&encode=url3986";
 
-const decodeHTML = (str) => {
-  const el = document.createElement("textarea");
-  el.innerHTML = str;
-  return el.value;
+const decodeAPI = (str) => {
+  try {
+    return decodeURIComponent(str.replace(/\+/g, " "));
+  } catch {
+    return str;
+  }
 };
 
 const shuffle = (arr) => [...arr].sort(() => Math.random() - 0.5);
@@ -24,6 +26,7 @@ const TriviaGame = memo(function TriviaGame() {
   const streak = getStreak();
   const best = getBestScore();
   const abortRef = useRef(null);
+  const cardRef = useRef(null);
 
   const fetchQuestions = async () => {
     if (abortRef.current) abortRef.current.abort();
@@ -46,8 +49,8 @@ const TriviaGame = memo(function TriviaGame() {
         const apiQuestions = data.results.map(q => {
           const opts = shuffle([q.correct_answer, ...q.incorrect_answers]);
           return {
-            q: decodeHTML(q.question),
-            opts: opts.map(o => decodeHTML(o)),
+            q: decodeAPI(q.question),
+            opts: opts.map(o => decodeAPI(o)),
             correct: opts.indexOf(q.correct_answer),
             isLocal: false,
           };
@@ -81,9 +84,15 @@ const TriviaGame = memo(function TriviaGame() {
 
   const answer = (i) => {
     if (answered) return;
+    const scrollY = window.scrollY;
     setAnswered(true);
     setSelected(i);
     if (i === questions[idx].correct) setScore(s => s + 1);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        window.scrollTo(0, scrollY);
+      });
+    });
   };
 
   const next = () => {
@@ -116,7 +125,7 @@ const TriviaGame = memo(function TriviaGame() {
 
   if (loading) {
     return (
-      <div className="glass-card fade-in trivia-game-card">
+      <div ref={cardRef} className="glass-card fade-in trivia-game-card">
         <div className="trivia-loading">
           <div className="loading-spinner" />
           <span>Fetching questions...</span>
@@ -145,7 +154,7 @@ const TriviaGame = memo(function TriviaGame() {
   if (!q) return null;
 
   return (
-    <div className="glass-card fade-in trivia-game-card">
+    <div ref={cardRef} className="glass-card fade-in trivia-game-card">
       <div className="trivia-progress-dots">
         {questions.map((_, i) => (
           <div key={i} className={`trivia-dot${i < idx ? " answered" : ""}${i === idx ? " current" : ""}`} />
