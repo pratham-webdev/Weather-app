@@ -11,5 +11,6 @@ root.render(
 );
 
 if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("/sw.js").catch(() => {});
+  const swUrl = import.meta.env.PROD ? "/Weather-app/sw.js" : "/sw.js";
+  navigator.serviceWorker.register(swUrl).catch(() => {});
 }
