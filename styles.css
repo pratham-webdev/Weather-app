@@ -2859,7 +2859,7 @@ body {
 
 .tab-bar.tabs-compact {
   position: sticky;
-  top: 58px;
+  top: 114px;
   z-index: 49;
   background: var(--bg-card-solid, #1a1a2e) !important;
   backdrop-filter: none !important;

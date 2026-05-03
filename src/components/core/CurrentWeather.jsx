@@ -13,36 +13,57 @@ const CurrentWeather = memo(function CurrentWeather({ data, cityName, units, fet
   const daytime = isDaytime(data);
   const weatherClass = `${info.type}-${daytime ? "day" : "night"}`;
 
+  const sentinelRef = useRef(null);
   const cardRef = useRef(null);
-  const tickingRef = useRef(false);
+  const thresholdRef = useRef(0);
+  const lastScrollRef = useRef(0);
+  const compactRef = useRef(false);
   const cleanupRef = useRef(null);
   const [isCompact, setIsCompact] = useState(false);
 
   useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel) return;
+
     const initTimer = setTimeout(() => {
-      const card = cardRef.current;
-      if (!card) return;
-      const check = () => {
-        const top = card.getBoundingClientRect().top;
-        const newCompact = top <= 0;
-        setIsCompact(newCompact);
-        onCompactChange?.(newCompact);
-        tickingRef.current = false;
-      };
+      thresholdRef.current = sentinel.getBoundingClientRect().top + window.scrollY;
+      lastScrollRef.current = window.scrollY;
+
       const onScroll = () => {
-        if (!tickingRef.current) {
-          requestAnimationFrame(check);
-          tickingRef.current = true;
+        const currentScroll = window.scrollY;
+        const threshold = thresholdRef.current;
+        const wasCompact = compactRef.current;
+        let next = wasCompact;
+
+        if (!wasCompact && currentScroll >= threshold) {
+          next = true;
+        } else if (wasCompact && currentScroll <= threshold - 200) {
+          next = false;
+        }
+
+        lastScrollRef.current = currentScroll;
+
+        if (next !== wasCompact) {
+          compactRef.current = next;
+          setIsCompact(next);
+          onCompactChange?.(next);
         }
       };
+
+      const onResize = () => {
+        thresholdRef.current = sentinel.getBoundingClientRect().top + window.scrollY;
+      };
+
       window.addEventListener("scroll", onScroll, { passive: true });
-      window.addEventListener("resize", onScroll, { passive: true });
-      check();
+      window.addEventListener("resize", onResize, { passive: true });
+      onScroll();
+
       cleanupRef.current = () => {
         window.removeEventListener("scroll", onScroll);
-        window.removeEventListener("resize", onScroll);
+        window.removeEventListener("resize", onResize);
       };
-    }, 150);
+    }, 100);
+
     return () => {
       clearTimeout(initTimer);
       cleanupRef.current?.();
@@ -50,7 +71,9 @@ const CurrentWeather = memo(function CurrentWeather({ data, cityName, units, fet
   }, []);
 
   return (
-    <div ref={cardRef} className={`current-weather glass-card weather-${weatherClass}${isCompact ? " weather-compact" : ""}`}>
+    <>
+      <div ref={sentinelRef} style={{ height: 1, pointerEvents: "none", visibility: "hidden" }} />
+      <div ref={cardRef} className={`current-weather glass-card weather-${weatherClass}${isCompact ? " weather-compact" : ""}`}>
       <div className="current-content">
         <div className="current-left">
           <div className="current-city-header">
@@ -94,6 +117,7 @@ const CurrentWeather = memo(function CurrentWeather({ data, cityName, units, fet
         </div>
       </div>
     </div>
+    </>
   );
 });
 
