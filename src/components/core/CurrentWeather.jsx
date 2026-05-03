@@ -14,22 +14,23 @@ const CurrentWeather = memo(function CurrentWeather({ data, cityName, units, fet
   const weatherClass = `${info.type}-${daytime ? "day" : "night"}`;
 
   const sentinelRef = useRef(null);
+  const observerRef = useRef(null);
   const [isCompact, setIsCompact] = useState(false);
 
   useEffect(() => {
     const sentinel = sentinelRef.current;
     if (!sentinel) return;
     const initTimer = setTimeout(() => {
-      const observer = new IntersectionObserver(
+      observerRef.current = new IntersectionObserver(
         ([entry]) => setIsCompact(!entry.isIntersecting),
         { threshold: 0, rootMargin: "-1px 0px 0px 0px" }
       );
-      observer.observe(sentinel);
-      const recheck = () => setIsCompact(!sentinel.checkVisibility ? true : sentinel.checkVisibility());
-      window.addEventListener("resize", recheck);
-      return () => { observer.disconnect(); window.removeEventListener("resize", recheck); };
+      observerRef.current.observe(sentinel);
     }, 150);
-    return () => clearTimeout(initTimer);
+    return () => {
+      clearTimeout(initTimer);
+      observerRef.current?.disconnect();
+    };
   }, []);
 
   return (
